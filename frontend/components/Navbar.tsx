@@ -11,6 +11,8 @@ import {
 } from "lucide-react"
 import { useTheme } from "@/context/ThemeContext"
 import { useConnect, useConnectors } from 'wagmi'
+import { ConnectButton } from "./connect-button"
+
 
 
 interface NavbarProps {
@@ -46,8 +48,8 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
         <div className="flex items-center justify-between h-16">
           {/* Logo/Brand */}
           <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <h1 className={`text-xl font-bold ${isDark ? "text-white" : "text-gray-900"}`}>MCPay</h1>
+            <div className="flex-shrink-0 flex items-center gap-2">
+              <img src="/mcpay-logo.svg" alt="MCPay Logo" className="h-18 w-18" />
             </div>
           </div>
 
@@ -89,16 +91,7 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
               <span className="hidden lg:inline">{isDark ? "Light" : "Dark"}</span>
             </Button>
           </div> */}
-          <div> {
-            connectors?.filter((connector) => connector.name == "MetaMask").map((connector) => (
-              <button
-                key={connector.uid}
-                onClick={() => connect.connect({ connector })}
-              >
-                {connector.name == "MetaMask" ? 'Connected' : 'Connect'}
-              </button>
-            ))
-          }</div>
+          <ConnectButton /> 
 
           {/* Mobile menu button */}
           <div className="md:hidden">

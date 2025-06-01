@@ -7,7 +7,9 @@ import { baseSepolia } from 'wagmi/chains'
 export const wagmiConfig = createConfig({
   chains: [baseSepolia],
   connectors: [porto()], 
-  storage: createStorage({ storage: localStorage }),
+  storage: typeof window !== 'undefined' 
+    ? createStorage({ storage: localStorage })
+    : undefined,
   transports: {
     [baseSepolia.id]: http(),
   },
