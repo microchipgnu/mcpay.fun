@@ -9,6 +9,8 @@ import {
   X
 } from "lucide-react"
 import { useTheme } from "@/context/ThemeContext"
+import { useConnect, useConnectors } from 'wagmi'
+
 
 interface NavbarProps {
   activeTab?: string
@@ -17,6 +19,10 @@ interface NavbarProps {
 
 export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+
+  const connect = useConnect()
+  const connectors = useConnectors()
+
   const { isDark } = useTheme()
 
   const tabs = [
@@ -53,12 +59,12 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
                   variant="ghost"
                   onClick={() => handleTabChange(tab.id)}
                   className={`px-3 py-2 text-sm font-medium transition-colors duration-200 ${activeTab === tab.id
-                      ? isDark
-                        ? "bg-gray-800 text-white"
-                        : "bg-gray-100 text-gray-900"
-                      : isDark
-                        ? "text-gray-300 hover:bg-gray-800 hover:text-white"
-                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    ? isDark
+                      ? "bg-gray-800 text-white"
+                      : "bg-gray-100 text-gray-900"
+                    : isDark
+                      ? "text-gray-300 hover:bg-gray-800 hover:text-white"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                     }`}
                 >
                   {tab.label}
@@ -81,7 +87,16 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
               <span className="hidden lg:inline">{isDark ? "Light" : "Dark"}</span>
             </Button>
           </div> */}
-          <div>Wallet</div>
+          <div> {
+            connectors?.filter((connector) => connector.name == "MetaMask").map((connector) => (
+              <button
+                key={connector.uid}
+                onClick={() => connect.connect({ connector })}
+              >
+                {connector.name == "MetaMask" ? 'Connected' : 'Connect'}
+              </button>
+            ))
+          }</div>
 
           {/* Mobile menu button */}
           <div className="md:hidden">
@@ -109,12 +124,12 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
                     setIsMobileMenuOpen(false)
                   }}
                   className={`w-full justify-start px-3 py-2 text-sm font-medium transition-colors duration-200 ${activeTab === tab.id
-                      ? isDark
-                        ? "bg-gray-800 text-white"
-                        : "bg-gray-100 text-gray-900"
-                      : isDark
-                        ? "text-gray-300 hover:bg-gray-800 hover:text-white"
-                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    ? isDark
+                      ? "bg-gray-800 text-white"
+                      : "bg-gray-100 text-gray-900"
+                    : isDark
+                      ? "text-gray-300 hover:bg-gray-800 hover:text-white"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                     }`}
                 >
                   {tab.label}
@@ -135,7 +150,21 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 {isDark ? "Light Mode" : "Dark Mode"}
               </Button> */}
-              <div>Wallet</div>
+              <div>
+                {
+                  connectors?.filter((connector) => connector.name == "MetaMask").map((connector) => (
+
+
+                    <button
+
+                      key={connector.uid}
+                      onClick={() => connect.connect({ connector })}
+                    >
+                      {connector.name == "MetaMask" ? 'Connected' : 'Connect'}
+                    </button>
+                  ))
+                }
+              </div>
             </div>
           </div>
         )}
