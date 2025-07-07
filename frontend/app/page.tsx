@@ -125,6 +125,8 @@ export default function MCPBrowser() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
+  const [visibleServersCount, setVisibleServersCount] = useState(9)
+  const [loadingMore, setLoadingMore] = useState(false)
   const { isDark, toggleTheme } = useTheme()
 
   useEffect(() => {
@@ -172,9 +174,26 @@ export default function MCPBrowser() {
     fetchServers()
   }, [])
 
+  // Reset visible servers count when category changes
+  useEffect(() => {
+    setVisibleServersCount(9)
+  }, [selectedCategory])
+
   const filteredServers = mcpServers.filter(server =>
     selectedCategory === "All" || server.category === selectedCategory
   )
+  
+  const visibleServers = filteredServers.slice(0, visibleServersCount)
+  const hasMoreServers = filteredServers.length > visibleServersCount
+
+  const loadMore = () => {
+    setLoadingMore(true)
+    // Simulate loading delay for better UX
+    setTimeout(() => {
+      setVisibleServersCount((prev: number) => prev + 9)
+      setLoadingMore(false)
+    }, 500)
+  }
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -475,7 +494,7 @@ export default function MCPBrowser() {
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
               <p className={`text-lg font-medium ${isDark ? "text-gray-300" : "text-gray-700"}`}>
-                {filteredServers.length} server{filteredServers.length !== 1 ? "s" : ""} available
+                Showing {visibleServers.length} of {filteredServers.length} server{filteredServers.length !== 1 ? "s" : ""} available
               </p>
             </div>
           )}
@@ -512,7 +531,7 @@ export default function MCPBrowser() {
               </p>
             </div>
           ) : (
-            filteredServers.map((server, index) => (
+            visibleServers.map((server, index) => (
               <Card key={server.id} className={`group relative overflow-hidden border ${isDark
                 ? "bg-surface-dark backdrop-blur border-white/[0.08] shadow-sm hover:shadow-md"
                 : "bg-surface backdrop-blur border-black/[0.05] shadow-sm hover:shadow-md"
@@ -602,6 +621,31 @@ export default function MCPBrowser() {
             ))
           )}
         </div>
+
+        {/* Load More Button */}
+        {hasMoreServers && !loading && (
+          <div className="text-center mb-16">
+            <Button
+              onClick={loadMore}
+              disabled={loadingMore}
+              size="lg"
+              variant="outline"
+              className={`px-8 py-3 ${isDark ? "bg-gray-800/50 hover:bg-gray-700/50 border-gray-600" : "bg-white/50 hover:bg-white/80 border-gray-300"} backdrop-blur transition-all duration-300 hover:shadow-lg`}
+            >
+              {loadingMore ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent mr-2" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <ArrowRight className="h-4 w-4 mr-2" />
+                  Load More Servers
+                </>
+              )}
+            </Button>
+          </div>
+        )}
 
         {/* Enhanced Footer */}
         <div className={`text-center py-12 border-t ${isDark ? "border-gray-700" : "border-gray-200"}`}>
