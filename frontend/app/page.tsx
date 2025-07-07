@@ -120,13 +120,14 @@ const categories = [
 export default function MCPBrowser() {
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([])
+  const [allServers, setAllServers] = useState<MCPServer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
-  const [visibleServersCount, setVisibleServersCount] = useState(9)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMoreServers, setHasMoreServers] = useState(true)
   const { isDark, toggleTheme } = useTheme()
 
   useEffect(() => {
@@ -154,7 +155,7 @@ export default function MCPBrowser() {
         setLoading(true)
         setError(null)
 
-        const serversResponse = await fetch(urlUtils.getApiUrl('/servers?limit=50&type=trending'))
+        const serversResponse = await fetch(urlUtils.getApiUrl('/servers?limit=9&type=trending'))
         if (!serversResponse.ok) {
           throw new Error(`Failed to fetch servers: ${serversResponse.status}`)
         }
@@ -163,6 +164,8 @@ export default function MCPBrowser() {
         const transformedServers = servers.map(server => transformServerData(server))
 
         setMcpServers(transformedServers)
+        setAllServers(transformedServers)
+        setHasMoreServers(servers.length === 9) // If we got 9 servers, there might be more
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch servers')
       } finally {
@@ -174,25 +177,41 @@ export default function MCPBrowser() {
     fetchServers()
   }, [])
 
-  // Reset visible servers count when category changes
+  // Reset servers when category changes
   useEffect(() => {
-    setVisibleServersCount(9)
-  }, [selectedCategory])
+    if (selectedCategory === "All") {
+      setMcpServers(allServers)
+    } else {
+      const filteredServers = allServers.filter((server: MCPServer) => server.category === selectedCategory)
+      setMcpServers(filteredServers)
+    }
+  }, [selectedCategory, allServers])
 
   const filteredServers = mcpServers.filter(server =>
     selectedCategory === "All" || server.category === selectedCategory
   )
-  
-  const visibleServers = filteredServers.slice(0, visibleServersCount)
-  const hasMoreServers = filteredServers.length > visibleServersCount
 
-  const loadMore = () => {
+  const loadMore = async () => {
     setLoadingMore(true)
-    // Simulate loading delay for better UX
-    setTimeout(() => {
-      setVisibleServersCount((prev: number) => prev + 9)
+    try {
+      const currentOffset = mcpServers.length
+      const serversResponse = await fetch(urlUtils.getApiUrl(`/servers?limit=9&offset=${currentOffset}&type=trending`))
+      
+      if (!serversResponse.ok) {
+        throw new Error(`Failed to fetch more servers: ${serversResponse.status}`)
+      }
+
+      const servers: APIServer[] = await serversResponse.json()
+      const transformedServers = servers.map(server => transformServerData(server))
+
+      setMcpServers((prev: MCPServer[]) => [...prev, ...transformedServers])
+      setAllServers((prev: MCPServer[]) => [...prev, ...transformedServers])
+      setHasMoreServers(servers.length === 9) // If we got 9 servers, there might be more
+    } catch (err) {
+      console.error('Error loading more servers:', err)
+    } finally {
       setLoadingMore(false)
-    }, 500)
+    }
   }
 
   const copyToClipboard = (text: string) => {
@@ -494,7 +513,7 @@ export default function MCPBrowser() {
             <div className="flex items-center gap-3">
               <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
               <p className={`text-lg font-medium ${isDark ? "text-gray-300" : "text-gray-700"}`}>
-                Showing {visibleServers.length} of {filteredServers.length} server{filteredServers.length !== 1 ? "s" : ""} available
+                Showing {filteredServers.length} of {allServers.length} server{allServers.length !== 1 ? "s" : ""} available
               </p>
             </div>
           )}
@@ -531,7 +550,7 @@ export default function MCPBrowser() {
               </p>
             </div>
           ) : (
-            visibleServers.map((server, index) => (
+            filteredServers.map((server: MCPServer, index: number) => (
               <Card key={server.id} className={`group relative overflow-hidden border ${isDark
                 ? "bg-surface-dark backdrop-blur border-white/[0.08] shadow-sm hover:shadow-md"
                 : "bg-surface backdrop-blur border-black/[0.05] shadow-sm hover:shadow-md"
@@ -574,7 +593,7 @@ export default function MCPBrowser() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={(e) => {
+                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                           e.preventDefault();
                           e.stopPropagation();
                           copyToClipboard(urlUtils.getMcpUrl(server.id));
@@ -602,7 +621,7 @@ export default function MCPBrowser() {
                     size="lg"
                     variant="outline"
                     className="w-full hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300"
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                       e.preventDefault();
                       e.stopPropagation();
                       window.location.href = `/servers/${server.id}`;
