@@ -115,15 +115,10 @@ const transformServerData = (apiServer: APIServer): MCPServer => ({
   })),
 });
 
-const categories = [
-  "All", "General", "Finance", "Automation", "Database",
-  "Development", "Productivity", "Utilities", "Communication", "AI/ML"
-]
+// Categories removed from landing page as requested
 
 export default function MCPBrowser() {
-  const [selectedCategory, setSelectedCategory] = useState("All")
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([])
-  const [allServers, setAllServers] = useState<MCPServer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
@@ -175,7 +170,6 @@ export default function MCPBrowser() {
         const transformedServers = servers.map(server => transformServerData(server))
 
         setMcpServers(transformedServers)
-        setAllServers(transformedServers)
         setHasMoreServers(servers.length === 9) // If we got 9 servers, there might be more
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch servers')
@@ -188,19 +182,8 @@ export default function MCPBrowser() {
     fetchServers()
   }, [])
 
-  // Reset servers when category changes
-  useEffect(() => {
-    if (selectedCategory === "All") {
-      setMcpServers(allServers)
-    } else {
-      const filteredServers = allServers.filter((server: MCPServer) => server.category === selectedCategory)
-      setMcpServers(filteredServers)
-    }
-  }, [selectedCategory, allServers])
-
-  const filteredServers = isSearchMode ? searchResults : mcpServers.filter((server: MCPServer) =>
-    selectedCategory === "All" || server.category === selectedCategory
-  )
+  // Show search results when in search mode, otherwise show trending servers
+  const filteredServers = isSearchMode ? searchResults : mcpServers
 
   const loadMore = async () => {
     setLoadingMore(true)
@@ -216,7 +199,6 @@ export default function MCPBrowser() {
       const transformedServers = servers.map(server => transformServerData(server))
 
       setMcpServers((prev: MCPServer[]) => [...prev, ...transformedServers])
-      setAllServers((prev: MCPServer[]) => [...prev, ...transformedServers])
       setHasMoreServers(servers.length === 9) // If we got 9 servers, there might be more
     } catch (err) {
       console.error('Error loading more servers:', err)
@@ -610,28 +592,7 @@ export default function MCPBrowser() {
           </div>
         )}
 
-        {/* Enhanced Category Filter - Hidden in search mode */}
-        {!isSearchMode && (
-          <div className="flex justify-center mb-12">
-            <div className="flex gap-2 flex-wrap p-2 rounded-2xl bg-white/50 dark:bg-gray-800/50 backdrop-blur shadow-lg border border-white/20 dark:border-gray-700/20">
-              {categories.map((category) => (
-                <Button
-                  key={category}
-                  variant={selectedCategory === category ? "default" : "ghost"}
-                  onClick={() => setSelectedCategory(category)}
-                  size="sm"
-                  disabled={loading}
-                  className={selectedCategory === category
-                    ? `${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white shadow-lg`
-                    : "hover:bg-white/70 dark:hover:bg-gray-700/70"
-                  }
-                >
-                  {category}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
+        
 
 
 
