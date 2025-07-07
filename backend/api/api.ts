@@ -85,22 +85,89 @@ app.get('/servers', async (c) => {
 
 app.get('/servers/search', async (c) => {
     const searchTerm = c.req.query('q')
-    const limit = c.req.query('limit') ? parseInt(c.req.query('limit') as string) : 10
-    const offset = c.req.query('offset') ? parseInt(c.req.query('offset') as string) : 0
+    const limitParam = c.req.query('limit')
+    const offsetParam = c.req.query('offset')
 
-    if (!searchTerm) {
-        return c.json({ error: 'Search term is required' }, 400)
+    // Input validation and sanitization
+    if (!searchTerm || typeof searchTerm !== 'string') {
+        return c.json({ error: 'Search term is required and must be a string' }, 400)
     }
+
+    // Validate search term
+    const trimmedSearchTerm = searchTerm.trim()
+    if (trimmedSearchTerm.length < 1) {
+        return c.json({ error: 'Search term cannot be empty' }, 400)
+    }
+
+    if (trimmedSearchTerm.length > 100) {
+        return c.json({ error: 'Search term too long (maximum 100 characters)' }, 400)
+    }
+
+    // Check for suspicious patterns that might indicate an attack
+    const suspiciousPatterns = [
+        /[<>]/,  // HTML/XML tags
+        /['"]/,  // Quote characters
+        /--|\/\*|\*\//, // SQL comment patterns
+        /\b(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|UNION|SELECT)\b/i, // SQL keywords
+        /\b(script|javascript|vbscript|onload|onerror|onclick)\b/i, // Script injection patterns
+    ]
+
+    for (const pattern of suspiciousPatterns) {
+        if (pattern.test(trimmedSearchTerm)) {
+            return c.json({ error: 'Invalid search term' }, 400)
+        }
+    }
+
+    // Validate and sanitize numeric parameters
+    let limit = 10
+    let offset = 0
+
+    if (limitParam) {
+        const parsedLimit = parseInt(limitParam as string)
+        if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+            return c.json({ error: 'Invalid limit parameter (must be between 1 and 100)' }, 400)
+        }
+        limit = parsedLimit
+    }
+
+    if (offsetParam) {
+        const parsedOffset = parseInt(offsetParam as string)
+        if (isNaN(parsedOffset) || parsedOffset < 0) {
+            return c.json({ error: 'Invalid offset parameter (must be non-negative)' }, 400)
+        }
+        offset = parsedOffset
+    }
+
+    // Basic rate limiting check (could be enhanced with Redis or similar)
+    const userAgent = c.req.header('User-Agent') || 'unknown'
+    const clientIP = c.req.header('X-Forwarded-For') || c.req.header('CF-Connecting-IP') || 'unknown'
+    
+    // Log the search for monitoring (in production, you might want to implement proper rate limiting)
+    console.log(`Search request: "${trimmedSearchTerm}" from IP: ${clientIP}, UA: ${userAgent}`)
 
     try {
         const servers = await withTransaction(async (tx) => {
-            return await txOperations.searchMcpServers(searchTerm, limit, offset)(tx);
+            return await txOperations.searchMcpServers(trimmedSearchTerm, limit, offset)(tx);
         })
 
-        return c.json(servers)
+        // Additional safety: ensure we don't return more than expected
+        const safeServers = servers.slice(0, limit)
+
+        return c.json(safeServers)
     } catch (error) {
         console.error('Error searching servers:', error)
-        return c.json({ error: 'Internal server error' }, 500)
+        
+        // Don't expose internal error details to client
+        if (error instanceof Error) {
+            // Only expose validation errors
+            if (error.message.includes('Invalid search term') || 
+                error.message.includes('Search term too short') || 
+                error.message.includes('Search term too long')) {
+                return c.json({ error: error.message }, 400)
+            }
+        }
+        
+        return c.json({ error: 'Search failed. Please try again.' }, 500)
     }
 })
 

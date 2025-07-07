@@ -461,18 +461,38 @@ export const txOperations = {
     },
 
     searchMcpServers: (searchTerm: string, limit = 10, offset = 0) => async (tx: TransactionType) => {
-        const searchPattern = `%${searchTerm}%`;
+        // Input validation and sanitization
+        if (!searchTerm || typeof searchTerm !== 'string') {
+            throw new Error('Invalid search term');
+        }
         
-        // Use PostgreSQL's advanced search capabilities
+        // Sanitize search term - remove any potentially dangerous characters
+        const sanitizedTerm = searchTerm
+            .trim()
+            .replace(/[%_\\]/g, '\\$&') // Escape SQL wildcards
+            .substring(0, 100); // Limit length to prevent DoS
+            
+        if (sanitizedTerm.length < 1) {
+            throw new Error('Search term too short');
+        }
+        
+        // Validate and sanitize numeric parameters
+        const safeLimitNum = Math.max(1, Math.min(100, Number(limit) || 10)); // Limit between 1-100
+        const safeOffsetNum = Math.max(0, Number(offset) || 0);
+        
+        // Use parameterized search pattern
+        const searchPattern = `%${sanitizedTerm}%`;
+        
+        // Use PostgreSQL's advanced search capabilities with proper parameterization
         const servers = await tx.query.mcpServers.findMany({
             where: or(
                 ilike(mcpServers.name, searchPattern),
                 ilike(mcpServers.description, searchPattern),
-                // Use PostgreSQL's full-text search for more advanced matching
-                sql`to_tsvector('english', ${mcpServers.name} || ' ' || ${mcpServers.description}) @@ plainto_tsquery('english', ${searchTerm})`
+                // Use PostgreSQL's full-text search with proper parameterization
+                sql`to_tsvector('english', coalesce(${mcpServers.name}, '') || ' ' || coalesce(${mcpServers.description}, '')) @@ plainto_tsquery('english', ${sanitizedTerm})`
             ),
-            limit,
-            offset,
+            limit: safeLimitNum,
+            offset: safeOffsetNum,
             orderBy: [
                 // Prioritize exact matches in name, then description, then by creation date
                 sql`CASE 
@@ -519,15 +539,19 @@ export const txOperations = {
             }
         });
 
-        // Also search for servers that have matching tools
+        // Also search for servers that have matching tools using safe subquery
         const serversWithMatchingTools = await tx.query.mcpServers.findMany({
-            where: sql`${mcpServers.id} IN (
-                SELECT DISTINCT ${mcpTools.serverId}
-                FROM ${mcpTools}
-                WHERE ${mcpTools.name} ILIKE ${searchPattern}
-                   OR ${mcpTools.description} ILIKE ${searchPattern}
-                   OR to_tsvector('english', ${mcpTools.name} || ' ' || ${mcpTools.description}) @@ plainto_tsquery('english', ${searchTerm})
+            where: sql`EXISTS (
+                SELECT 1 FROM ${mcpTools} 
+                WHERE ${mcpTools.serverId} = ${mcpServers.id}
+                AND (
+                    ${mcpTools.name} ILIKE ${searchPattern}
+                    OR ${mcpTools.description} ILIKE ${searchPattern}
+                    OR to_tsvector('english', coalesce(${mcpTools.name}, '') || ' ' || coalesce(${mcpTools.description}, '')) @@ plainto_tsquery('english', ${sanitizedTerm})
+                )
             )`,
+            limit: safeLimitNum,
+            offset: safeOffsetNum,
             columns: {
                 id: true,
                 serverId: true,
@@ -573,10 +597,11 @@ export const txOperations = {
 
         // Sort by relevance (exact name matches first, then description matches, then tool matches)
         const sortedResults = uniqueServers.sort((a, b) => {
-            const aNameMatch = a.name?.toLowerCase().includes(searchTerm.toLowerCase());
-            const bNameMatch = b.name?.toLowerCase().includes(searchTerm.toLowerCase());
-            const aDescMatch = a.description?.toLowerCase().includes(searchTerm.toLowerCase());
-            const bDescMatch = b.description?.toLowerCase().includes(searchTerm.toLowerCase());
+            const cleanSearchTerm = sanitizedTerm.toLowerCase();
+            const aNameMatch = a.name?.toLowerCase().includes(cleanSearchTerm);
+            const bNameMatch = b.name?.toLowerCase().includes(cleanSearchTerm);
+            const aDescMatch = a.description?.toLowerCase().includes(cleanSearchTerm);
+            const bDescMatch = b.description?.toLowerCase().includes(cleanSearchTerm);
             
             if (aNameMatch && !bNameMatch) return -1;
             if (!aNameMatch && bNameMatch) return 1;
@@ -587,7 +612,7 @@ export const txOperations = {
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
 
-        return sortedResults.slice(offset, offset + limit);
+        return sortedResults.slice(0, safeLimitNum); // Additional safety limit
     },
 
     updateMcpServer: (id: string, data: {
