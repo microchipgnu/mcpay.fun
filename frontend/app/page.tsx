@@ -261,8 +261,23 @@ export default function MCPBrowser() {
     setSearchError(null)
   }
 
-  // Debounced search
+  // Handle search term changes - exit search mode when empty
+  const handleSearchTermChange = (value: string) => {
+    setSearchTerm(value)
+    if (!value.trim()) {
+      setIsSearchMode(false)
+      setSearchResults([])
+      setSearchError(null)
+    }
+  }
+
+  // Debounced search - only trigger when user has actually typed something
   useEffect(() => {
+    // Don't search on initial load or when search term is empty
+    if (!searchTerm.trim()) {
+      return
+    }
+
     const timeoutId = setTimeout(() => {
       handleSearch(searchTerm)
     }, 300)
@@ -536,19 +551,19 @@ export default function MCPBrowser() {
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className={`h-5 w-5 ${isDark ? "text-gray-400" : "text-gray-500"}`} />
             </div>
-            <Input
-              type="text"
-              placeholder="Search servers, tools, or descriptions..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className={`pl-10 pr-10 py-3 w-full rounded-2xl border-0 shadow-lg ${
-                isDark 
-                  ? "bg-gray-800/50 backdrop-blur text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500" 
-                  : "bg-white/80 backdrop-blur text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
-              }`}
-              maxLength={100}
-              disabled={loading}
-            />
+                         <Input
+               type="text"
+               placeholder="Search servers, tools, or descriptions..."
+               value={searchTerm}
+               onChange={(e) => handleSearchTermChange(e.target.value)}
+               className={`pl-10 pr-10 py-3 w-full rounded-2xl border-0 shadow-lg ${
+                 isDark 
+                   ? "bg-gray-800/50 backdrop-blur text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500" 
+                   : "bg-white/80 backdrop-blur text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500"
+               }`}
+               maxLength={100}
+               disabled={loading}
+             />
             {searchTerm && (
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
                 <Button
@@ -565,32 +580,30 @@ export default function MCPBrowser() {
           </div>
         </div>
 
-        {/* Search Status */}
-        {isSearchMode && (
-          <div className="text-center mb-6">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              {searchLoading && (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-              )}
-              <p className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-                {searchLoading 
-                  ? "Searching..." 
-                  : searchError
-                    ? `Search failed: ${searchError}`
-                    : `Found ${searchResults.length} server${searchResults.length === 1 ? '' : 's'} matching "${textUtils.sanitizeForDisplay(searchTerm, 50)}"`
-                }
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={clearSearch}
-              className="text-xs"
-            >
-              Back to trending servers
-            </Button>
-          </div>
-        )}
+                 {/* Search Status */}
+         {isSearchMode && !searchError && (
+           <div className="text-center mb-6">
+             <div className="flex items-center justify-center gap-2 mb-2">
+               {searchLoading && (
+                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+               )}
+               <p className={`text-sm ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+                 {searchLoading 
+                   ? "Searching..." 
+                   : `Found ${searchResults.length} server${searchResults.length === 1 ? '' : 's'} matching "${textUtils.sanitizeForDisplay(searchTerm, 50)}"`
+                 }
+               </p>
+             </div>
+             <Button
+               size="sm"
+               variant="outline"
+               onClick={clearSearch}
+               className="text-xs"
+             >
+               Back to trending servers
+             </Button>
+           </div>
+         )}
 
         
 
@@ -618,32 +631,70 @@ export default function MCPBrowser() {
             </div>
           ) : searchError ? (
             <div className="col-span-full text-center py-16">
-              <div className="p-6 rounded-2xl bg-red-50 dark:bg-red-900/20 w-fit mx-auto mb-6">
-                <AlertCircle className={`h-16 w-16 ${isDark ? "text-red-400" : "text-red-500"}`} />
+              <div className="p-6 rounded-2xl bg-gray-100 dark:bg-gray-800 w-fit mx-auto mb-6">
+                <Search className={`h-16 w-16 ${isDark ? "text-gray-500" : "text-gray-400"}`} />
               </div>
-              <h3 className="text-2xl font-bold mb-4">Search Error</h3>
+              <h3 className="text-2xl font-bold mb-4">Couldn't find anything</h3>
               <p className={`mb-6 text-lg ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-                {searchError}
+                We couldn't find any servers matching "{textUtils.sanitizeForDisplay(searchTerm, 50)}".
               </p>
-              <Button onClick={clearSearch} size="lg" className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}>
-                <Search className="h-4 w-4 mr-2" />
-                Try Again
-              </Button>
+              <div className="flex gap-4 justify-center">
+                <Button onClick={clearSearch} size="lg" variant="outline">
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  Back to trending servers
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setSearchTerm("")
+                    setSearchError(null)
+                    document.querySelector('input[type="text"]')?.focus()
+                  }} 
+                  size="lg" 
+                  className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
+                >
+                  <Search className="h-4 w-4 mr-2" />
+                  Try different search
+                </Button>
+              </div>
             </div>
           ) : filteredServers.length === 0 ? (
             <div className="col-span-full text-center py-16">
               <div className="p-6 rounded-2xl bg-gray-100 dark:bg-gray-800 w-fit mx-auto mb-6">
-                <Globe className={`h-16 w-16 ${isDark ? "text-gray-500" : "text-gray-400"}`} />
+                {isSearchMode ? (
+                  <Search className={`h-16 w-16 ${isDark ? "text-gray-500" : "text-gray-400"}`} />
+                ) : (
+                  <Globe className={`h-16 w-16 ${isDark ? "text-gray-500" : "text-gray-400"}`} />
+                )}
               </div>
-              <h3 className="text-2xl font-bold mb-4">No Servers Found</h3>
-              <p className={`text-lg ${isDark ? "text-gray-400" : "text-gray-600"}`}>
+              <h3 className="text-2xl font-bold mb-4">
+                {isSearchMode ? "No results found" : "No Servers Found"}
+              </h3>
+              <p className={`mb-6 text-lg ${isDark ? "text-gray-400" : "text-gray-600"}`}>
                 {isSearchMode 
-                  ? `No servers match "${textUtils.sanitizeForDisplay(searchTerm, 50)}". Try a different search term or browse by category.`
-                  : mcpServers.length === 0 
-                    ? "Be the first to register a server!" 
-                    : "Try exploring a different category."
+                  ? `We couldn't find any servers matching "${textUtils.sanitizeForDisplay(searchTerm, 50)}".`
+                  : "Be the first to register a server!"
                 }
               </p>
+              {isSearchMode && (
+                <div className="flex gap-4 justify-center">
+                  <Button onClick={clearSearch} size="lg" variant="outline">
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    Back to trending servers
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      setSearchTerm("")
+                      setSearchError(null)
+                      document.querySelector('input[type="text"]')?.focus()
+                    }} 
+                    size="lg" 
+                    className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
+                  >
+                    <Search className="h-4 w-4 mr-2" />
+                    Try different search
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             filteredServers.map((server: MCPServer, index: number) => (
