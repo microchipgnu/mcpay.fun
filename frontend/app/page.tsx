@@ -643,18 +643,19 @@ export default function MCPBrowser() {
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Back to trending servers
                 </Button>
-                                 <Button 
-                   onClick={() => {
-                     setSearchTerm("")
-                     setSearchError(null)
-                     document.querySelector(`input[type="text"]`)?.focus()
-                   }} 
-                   size="lg" 
-                   className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
-                 >
-                   <Search className="h-4 w-4 mr-2" />
-                   Try different search
-                 </Button>
+                                                      <Button 
+                       onClick={() => {
+                         setSearchTerm("")
+                         setSearchError(null)
+                         const inputElement = document.querySelector(`input[type="text"]`) as HTMLInputElement
+                         inputElement?.focus()
+                       }} 
+                       size="lg" 
+                       className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
+                     >
+                       <Search className="h-4 w-4 mr-2" />
+                       Try different search
+                     </Button>
               </div>
             </div>
           ) : filteredServers.length === 0 ? (
@@ -685,7 +686,8 @@ export default function MCPBrowser() {
                     onClick={() => {
                       setSearchTerm("")
                       setSearchError(null)
-                      document.querySelector(`input[type="text"]`)?.focus()
+                      const inputElement = document.querySelector(`input[type="text"]`) as HTMLInputElement
+                      inputElement?.focus()
                     }} 
                     size="lg" 
                     className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
