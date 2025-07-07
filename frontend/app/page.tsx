@@ -634,27 +634,27 @@ export default function MCPBrowser() {
               <div className="p-6 rounded-2xl bg-gray-100 dark:bg-gray-800 w-fit mx-auto mb-6">
                 <Search className={`h-16 w-16 ${isDark ? "text-gray-500" : "text-gray-400"}`} />
               </div>
-              <h3 className="text-2xl font-bold mb-4">Couldn't find anything</h3>
+              <h3 className="text-2xl font-bold mb-4">Couldn&apos;t find anything</h3>
               <p className={`mb-6 text-lg ${isDark ? "text-gray-400" : "text-gray-600"}`}>
-                We couldn't find any servers matching "{textUtils.sanitizeForDisplay(searchTerm, 50)}".
+                We couldn&apos;t find any servers matching &quot;{textUtils.sanitizeForDisplay(searchTerm, 50)}&quot;.
               </p>
               <div className="flex gap-4 justify-center">
                 <Button onClick={clearSearch} size="lg" variant="outline">
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Back to trending servers
                 </Button>
-                <Button 
-                  onClick={() => {
-                    setSearchTerm("")
-                    setSearchError(null)
-                    document.querySelector('input[type="text"]')?.focus()
-                  }} 
-                  size="lg" 
-                  className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  Try different search
-                </Button>
+                                 <Button 
+                   onClick={() => {
+                     setSearchTerm("")
+                     setSearchError(null)
+                     document.querySelector(`input[type="text"]`)?.focus()
+                   }} 
+                   size="lg" 
+                   className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
+                 >
+                   <Search className="h-4 w-4 mr-2" />
+                   Try different search
+                 </Button>
               </div>
             </div>
           ) : filteredServers.length === 0 ? (
@@ -671,7 +671,7 @@ export default function MCPBrowser() {
               </h3>
               <p className={`mb-6 text-lg ${isDark ? "text-gray-400" : "text-gray-600"}`}>
                 {isSearchMode 
-                  ? `We couldn't find any servers matching "${textUtils.sanitizeForDisplay(searchTerm, 50)}".`
+                  ? `We couldn&apos;t find any servers matching &quot;${textUtils.sanitizeForDisplay(searchTerm, 50)}&quot;.`
                   : "Be the first to register a server!"
                 }
               </p>
@@ -685,7 +685,7 @@ export default function MCPBrowser() {
                     onClick={() => {
                       setSearchTerm("")
                       setSearchError(null)
-                      document.querySelector('input[type="text"]')?.focus()
+                      document.querySelector(`input[type="text"]`)?.focus()
                     }} 
                     size="lg" 
                     className={`${isDark ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
