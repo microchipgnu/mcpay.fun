@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import db from "./index.js";
 import {
     analytics,
@@ -458,6 +458,136 @@ export const txOperations = {
             .slice(offset, offset + limit);
 
         return sortedServers;
+    },
+
+    searchMcpServers: (searchTerm: string, limit = 10, offset = 0) => async (tx: TransactionType) => {
+        const searchPattern = `%${searchTerm}%`;
+        
+        // Use PostgreSQL's advanced search capabilities
+        const servers = await tx.query.mcpServers.findMany({
+            where: or(
+                ilike(mcpServers.name, searchPattern),
+                ilike(mcpServers.description, searchPattern),
+                // Use PostgreSQL's full-text search for more advanced matching
+                sql`to_tsvector('english', ${mcpServers.name} || ' ' || ${mcpServers.description}) @@ plainto_tsquery('english', ${searchTerm})`
+            ),
+            limit,
+            offset,
+            orderBy: [
+                // Prioritize exact matches in name, then description, then by creation date
+                sql`CASE 
+                    WHEN ${mcpServers.name} ILIKE ${searchPattern} THEN 1
+                    WHEN ${mcpServers.description} ILIKE ${searchPattern} THEN 2
+                    ELSE 3
+                END`,
+                desc(mcpServers.createdAt)
+            ],
+            columns: {
+                id: true,
+                serverId: true,
+                name: true,
+                receiverAddress: true,
+                description: true,
+                metadata: true,
+                status: true,
+                createdAt: true,
+                updatedAt: true
+            },
+            with: {
+                creator: {
+                    columns: {
+                        id: true,
+                        walletAddress: true,
+                        displayName: true,
+                        avatarUrl: true
+                    }
+                },
+                tools: {
+                    columns: {
+                        id: true,
+                        name: true,
+                        description: true,
+                        inputSchema: true,
+                        isMonetized: true,
+                        payment: true,
+                        status: true,
+                        createdAt: true,
+                        updatedAt: true
+                    },
+                    orderBy: [mcpTools.name]
+                }
+            }
+        });
+
+        // Also search for servers that have matching tools
+        const serversWithMatchingTools = await tx.query.mcpServers.findMany({
+            where: sql`${mcpServers.id} IN (
+                SELECT DISTINCT ${mcpTools.serverId}
+                FROM ${mcpTools}
+                WHERE ${mcpTools.name} ILIKE ${searchPattern}
+                   OR ${mcpTools.description} ILIKE ${searchPattern}
+                   OR to_tsvector('english', ${mcpTools.name} || ' ' || ${mcpTools.description}) @@ plainto_tsquery('english', ${searchTerm})
+            )`,
+            columns: {
+                id: true,
+                serverId: true,
+                name: true,
+                receiverAddress: true,
+                description: true,
+                metadata: true,
+                status: true,
+                createdAt: true,
+                updatedAt: true
+            },
+            with: {
+                creator: {
+                    columns: {
+                        id: true,
+                        walletAddress: true,
+                        displayName: true,
+                        avatarUrl: true
+                    }
+                },
+                tools: {
+                    columns: {
+                        id: true,
+                        name: true,
+                        description: true,
+                        inputSchema: true,
+                        isMonetized: true,
+                        payment: true,
+                        status: true,
+                        createdAt: true,
+                        updatedAt: true
+                    },
+                    orderBy: [mcpTools.name]
+                }
+            }
+        });
+
+        // Combine results and remove duplicates
+        const allServers = [...servers, ...serversWithMatchingTools];
+        const uniqueServers = allServers.filter((server, index, self) => 
+            index === self.findIndex(s => s.id === server.id)
+        );
+
+        // Sort by relevance (exact name matches first, then description matches, then tool matches)
+        const sortedResults = uniqueServers.sort((a, b) => {
+            const aNameMatch = a.name?.toLowerCase().includes(searchTerm.toLowerCase());
+            const bNameMatch = b.name?.toLowerCase().includes(searchTerm.toLowerCase());
+            const aDescMatch = a.description?.toLowerCase().includes(searchTerm.toLowerCase());
+            const bDescMatch = b.description?.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            if (aNameMatch && !bNameMatch) return -1;
+            if (!aNameMatch && bNameMatch) return 1;
+            if (aDescMatch && !bDescMatch) return -1;
+            if (!aDescMatch && bDescMatch) return 1;
+            
+            // If equal relevance, sort by creation date
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+
+        return sortedResults.slice(offset, offset + limit);
     },
 
     updateMcpServer: (id: string, data: {

@@ -83,6 +83,27 @@ app.get('/servers', async (c) => {
     return c.json(servers)
 })
 
+app.get('/servers/search', async (c) => {
+    const searchTerm = c.req.query('q')
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit') as string) : 10
+    const offset = c.req.query('offset') ? parseInt(c.req.query('offset') as string) : 0
+
+    if (!searchTerm) {
+        return c.json({ error: 'Search term is required' }, 400)
+    }
+
+    try {
+        const servers = await withTransaction(async (tx) => {
+            return await txOperations.searchMcpServers(searchTerm, limit, offset)(tx);
+        })
+
+        return c.json(servers)
+    } catch (error) {
+        console.error('Error searching servers:', error)
+        return c.json({ error: 'Internal server error' }, 500)
+    }
+})
+
 app.get('/servers/:id', async (c) => {
     const serverId = c.req.param('id')
     

@@ -4,6 +4,7 @@ import { MCPServer } from "@/components/ToolsModal"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { toast, ToastContainer } from "@/components/ui/toast"
 import { useTheme } from "@/context/ThemeContext"
 import { urlUtils } from "@/lib/utils"
@@ -15,11 +16,13 @@ import {
   Globe,
   Moon,
   Rocket,
+  Search,
   Server,
   Sparkles,
   Sun,
   PenToolIcon as Tool,
   TrendingUp,
+  X,
   Zap
 } from "lucide-react"
 import Image from "next/image"
@@ -128,6 +131,14 @@ export default function MCPBrowser() {
   const [analyticsError, setAnalyticsError] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMoreServers, setHasMoreServers] = useState(true)
+  
+  // Search state
+  const [searchTerm, setSearchTerm] = useState("")
+  const [searchResults, setSearchResults] = useState<MCPServer[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [isSearchMode, setIsSearchMode] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  
   const { isDark, toggleTheme } = useTheme()
 
   useEffect(() => {
@@ -187,7 +198,7 @@ export default function MCPBrowser() {
     }
   }, [selectedCategory, allServers])
 
-  const filteredServers = mcpServers.filter(server =>
+  const filteredServers = isSearchMode ? searchResults : mcpServers.filter((server: MCPServer) =>
     selectedCategory === "All" || server.category === selectedCategory
   )
 
@@ -218,6 +229,54 @@ export default function MCPBrowser() {
     navigator.clipboard.writeText(text)
     toast.success("Endpoint copied • paste into `fetch()`")
   }
+
+  // Search functionality
+  const handleSearch = async (term: string) => {
+    if (!term.trim()) {
+      setIsSearchMode(false)
+      setSearchResults([])
+      setSearchError(null)
+      return
+    }
+
+    setSearchLoading(true)
+    setSearchError(null)
+    setIsSearchMode(true)
+
+    try {
+      const response = await fetch(urlUtils.getApiUrl(`/servers/search?q=${encodeURIComponent(term)}&limit=20`))
+      
+      if (!response.ok) {
+        throw new Error(`Search failed: ${response.status}`)
+      }
+
+      const servers: APIServer[] = await response.json()
+      const transformedServers = servers.map(server => transformServerData(server))
+      
+      setSearchResults(transformedServers)
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Search failed')
+      setSearchResults([])
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  const clearSearch = () => {
+    setSearchTerm("")
+    setIsSearchMode(false)
+    setSearchResults([])
+    setSearchError(null)
+  }
+
+  // Debounced search
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      handleSearch(searchTerm)
+    }, 300)
+
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm])
 
   // Format number with commas
   const formatNumber = (num: number | undefined | null) => {
