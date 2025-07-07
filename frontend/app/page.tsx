@@ -500,24 +500,7 @@ export default function MCPBrowser() {
           </div>
         </div>
 
-                {/* Results Count with better styling */}
-        <div className="mb-8">
-          {loading ? (
-            <div className={`h-6 w-48 rounded-full animate-pulse ${isDark ? "bg-gray-700" : "bg-gray-200"}`} />
-          ) : error ? (
-            <div className="flex items-center gap-2">
-              <AlertCircle className={`h-5 w-5 ${isDark ? "text-red-400" : "text-red-500"}`} />
-              <p className={`font-medium ${isDark ? "text-red-400" : "text-red-500"}`}>Failed to load servers</p>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
-              <p className={`text-lg font-medium ${isDark ? "text-gray-300" : "text-gray-700"}`}>
-                Showing {filteredServers.length} of {allServers.length} server{allServers.length !== 1 ? "s" : ""} available
-              </p>
-            </div>
-          )}
-        </div>
+
 
         {/* Enhanced MCP Server Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
