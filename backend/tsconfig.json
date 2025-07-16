@@ -2,14 +2,16 @@
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["esnext"],
-    "target": "ESNext", 
-    "module": "NodeNext",
+    "target": "ESNext",
+    "module": "ESNext",
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,
 
-    // Module resolution
-    "moduleResolution": "node16",
+    // Bundler mode - better for complex dependencies and Vercel
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
     "noEmit": true,
 
     // Best practices

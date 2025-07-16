@@ -42,6 +42,9 @@ interface APITool {
   updatedAt: string;
 }
 
+// Note: Backend supports multi-wallet and blockchain-agnostic user management
+// Frontend currently displays single wallet but is prepared for multi-wallet features
+
 interface APIServer {
   id: string;
   serverId: string;

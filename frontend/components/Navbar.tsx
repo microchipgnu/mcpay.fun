@@ -1,19 +1,19 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
-import Image from "next/image"
-import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { useTheme } from "@/context/ThemeContext"
+import { useSession } from "@/lib/auth"
 import {
+  LogIn,
   // Moon, 
   // Sun, 
-  Menu,
-  X
+  User
 } from "lucide-react"
-import { useTheme } from "@/context/ThemeContext"
-import { useConnect, useConnectors } from 'wagmi'
-import { ConnectButton } from "./connect-button"
+import Image from "next/image"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { useAccountModal } from "../hooks/useAccountModal"
+import { AccountModal } from "./AccountModal"
 import { Badge } from "./ui/badge"
 
 interface NavbarProps {
@@ -22,13 +22,11 @@ interface NavbarProps {
 }
 
 export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const pathname = usePathname()
 
-  const connect = useConnect()
-  const connectors = useConnectors()
-
   const { isDark } = useTheme()
+  const { data: session, isPending: sessionLoading } = useSession()
+  const { isOpen, defaultTab, openModal, closeModal } = useAccountModal()
 
   const handleTabChange = (tabId: string) => {
     if (onTabChange) {
@@ -51,15 +49,8 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
             </Link>
           </div>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-4">
-              {/* Navigation items can be added here if needed */}
-            </div>
-          </div>
-
-          {/* Right side items */}
-          <div className="hidden md:flex items-center space-x-4">
+          {/* Navigation Items - Always Visible */}
+          <div className="flex items-center space-x-4">
             <Button
               variant="ghost"
               asChild
@@ -75,85 +66,54 @@ export default function Navbar({ activeTab, onTabChange }: NavbarProps) {
             >
               <Link href="/register">Register Server</Link>
             </Button>
-            <ConnectButton />
-          </div>
-
-          {/* Desktop Theme Toggle */}
-          {/* <div className="hidden md:block">
+            
+            {/* Account Button */}
             <Button
               variant="ghost"
-              size="sm"
-              onClick={toggleTheme}
-              className={`flex items-center gap-2 ${
-                isDark ? "text-gray-300 hover:bg-gray-800" : "text-gray-600 hover:bg-gray-100"
+              onClick={() => openModal('profile')}
+              disabled={sessionLoading}
+              className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-colors duration-200 ${
+                isDark
+                  ? "text-gray-300 hover:bg-gray-800 hover:text-white"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               }`}
             >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              <span className="hidden lg:inline">{isDark ? "Light" : "Dark"}</span>
-            </Button>
-          </div> */}
-
-          {/* Mobile menu button */}
-          <div className="md:hidden">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className={isDark ? "text-gray-300 hover:bg-gray-800" : "text-gray-600 hover:bg-gray-100"}
-            >
-              {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              {session?.user ? (
+                <>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                    isDark ? "bg-gray-700" : "bg-gray-200"
+                  }`}>
+                    {session.user.image ? (
+                      <img 
+                        src={session.user.image} 
+                        alt="Profile" 
+                        className="w-6 h-6 rounded-full object-cover"
+                      />
+                    ) : (
+                      <User className="h-3 w-3" />
+                    )}
+                  </div>
+                  <span className="hidden sm:inline">
+                    {session.user.name?.split(' ')[0] || 'Account'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="h-4 w-4" />
+                  <span className="hidden sm:inline">Connect</span>
+                </>
+              )}
             </Button>
           </div>
         </div>
-
-        {/* Mobile Navigation */}
-        {isMobileMenuOpen && (
-          <div className="md:hidden">
-            <div className="px-2 pt-2 pb-3 space-y-1 border-t border-gray-200 dark:border-gray-700">
-              {/* Register button for mobile */}
-              <Button
-                variant="ghost"
-                asChild
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`w-full justify-start px-3 py-2 text-sm font-medium transition-colors duration-200 ${
-                  pathname === "/register"
-                    ? isDark
-                      ? "bg-gray-800 text-white"
-                      : "bg-gray-100 text-gray-900"
-                    : isDark
-                      ? "text-gray-300 hover:bg-gray-800 hover:text-white"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                }`}
-              >
-                <Link href="/register">Register Server</Link>
-              </Button>
-
-              {/* Mobile Connect Button */}
-              <div className="px-3 py-2">
-                {
-                  connectors?.filter((connector) => 
-                    connector.name === "MetaMask" || 
-                    connector.name === "Coinbase Wallet" ||
-                    connector.name.toLowerCase().includes("porto")
-                  ).map((connector) => (
-                    <button
-                      key={connector.uid}
-                      onClick={() => connect.connect({ connector })}
-                      className={`w-full text-left px-3 py-2 text-sm font-medium transition-colors duration-200 block ${
-                        isDark
-                          ? "text-gray-300 hover:bg-gray-800 hover:text-white"
-                          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                      }`}
-                    >
-                      {connector.name}
-                    </button>
-                  ))
-                }
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+      
+      {/* Account Modal */}
+      <AccountModal 
+        isOpen={isOpen} 
+        onClose={closeModal}
+        defaultTab={defaultTab}
+      />
     </nav>
   )
 }

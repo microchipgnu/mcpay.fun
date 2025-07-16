@@ -1,6 +1,121 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, decimal, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import type { BlockchainArchitecture } from "../lib/crypto-accounts.js";
+
+// Enhanced Users table - supporting both wallet and traditional auth
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // Legacy wallet field (deprecated - keeping for backward compatibility)
+  walletAddress: text('wallet_address').unique(),
+  
+  // Traditional auth fields (from better-auth)
+  name: text('name'),
+  email: text('email').unique(),
+  emailVerified: boolean('email_verified').default(false),
+  image: text('image'), // Profile picture URL
+  
+  // Additional profile fields
+  displayName: text('display_name'),
+  avatarUrl: text('avatar_url'), // Keeping for backwards compatibility
+  
+  // Timestamps
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  lastLoginAt: timestamp('last_login_at'),
+}, (table) => [
+  index('user_wallet_address_idx').on(table.walletAddress),
+  index('user_email_idx').on(table.email),
+  index('user_last_login_idx').on(table.lastLoginAt),
+]);
+
+// User Wallets table - supporting multiple wallets per user (blockchain-agnostic)
+export const userWallets = pgTable('user_wallets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  walletAddress: text('wallet_address').notNull(), // Removed .unique() to allow same wallet for multiple users/configs
+  walletType: text('wallet_type').notNull(), // 'external', 'managed', 'custodial'
+  provider: text('provider'), // 'metamask', 'phantom', 'coinbase-cdp', 'privy', 'magic', 'near-wallet', etc.
+  blockchain: text('blockchain'), // 'ethereum', 'solana', 'near', 'polygon', 'base', etc.
+  architecture: text('architecture').$type<BlockchainArchitecture>(), // 'evm', 'solana', 'near', 'cosmos', 'bitcoin'
+  isPrimary: boolean('is_primary').default(false).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  
+  // Generic wallet metadata - blockchain-specific data goes here
+  walletMetadata: jsonb('wallet_metadata'), // Store blockchain-specific info like chainId, ensName, solana program accounts, etc.
+  
+  // External service references (NO sensitive data stored)
+  externalWalletId: text('external_wallet_id'), // Reference ID from external service (Coinbase CDP, Privy, etc.)
+  externalUserId: text('external_user_id'), // User ID in external system if different
+  
+  // Timestamps
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  lastUsedAt: timestamp('last_used_at'),
+}, (table) => [
+  index('user_wallets_user_id_idx').on(table.userId),
+  index('user_wallets_wallet_address_idx').on(table.walletAddress),
+  index('user_wallets_type_idx').on(table.walletType),
+  index('user_wallets_blockchain_idx').on(table.blockchain),
+  index('user_wallets_architecture_idx').on(table.architecture),
+  index('user_wallets_primary_idx').on(table.isPrimary),
+  index('user_wallets_active_idx').on(table.isActive),
+  index('user_wallets_provider_idx').on(table.provider),
+  index('user_wallets_external_id_idx').on(table.externalWalletId),
+  // Ensure only one primary wallet per user
+  uniqueIndex('user_wallets_primary_unique').on(table.userId).where(sql`is_primary = true`),
+  // Prevent exact duplicates: same user + wallet + provider + type
+  uniqueIndex('user_wallets_unique_combination').on(table.userId, table.walletAddress, table.provider, table.walletType),
+]);
+
+// Better-auth session table
+export const session = pgTable("session", {
+  id: text('id').primaryKey(),
+  expiresAt: timestamp('expires_at').notNull(),
+  token: text('token').notNull().unique(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' })
+}, (table) => [
+  index('session_user_id_idx').on(table.userId),
+  index('session_token_idx').on(table.token),
+]);
+
+// Better-auth account table (for OAuth providers)
+export const account = pgTable("account", {
+  id: text('id').primaryKey(),
+  accountId: text('account_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  idToken: text('id_token'),
+  accessTokenExpiresAt: timestamp('access_token_expires_at'),
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+  scope: text('scope'),
+  password: text('password'),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull()
+}, (table) => [
+  index('account_user_id_idx').on(table.userId),
+  index('account_provider_idx').on(table.providerId),
+]);
+
+// Better-auth verification table (for email verification, password reset, etc.)
+export const verification = pgTable("verification", {
+  id: text('id').primaryKey(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow()
+}, (table) => [
+  index('verification_identifier_idx').on(table.identifier),
+  index('verification_expires_at_idx').on(table.expiresAt),
+]);
 
 // Merged MCP Servers table (combines mcps and mcpServers)
 export const mcpServers = pgTable('mcp_servers', {
@@ -43,21 +158,6 @@ export const mcpTools = pgTable('mcp_tools', {
   index('mcp_tool_status_idx').on(table.status),
   index('mcp_tool_server_name_idx').on(table.serverId, table.name),
   index('mcp_tool_monetized_idx').on(table.isMonetized),
-]);
-
-export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  walletAddress: text('wallet_address').notNull().unique(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  email: text('email'),
-  displayName: text('display_name'),
-  avatarUrl: text('avatar_url'),
-  lastLoginAt: timestamp('last_login_at'),
-}, (table) => [
-  index('user_wallet_address_idx').on(table.walletAddress),
-  index('user_email_idx').on(table.email),
-  index('user_last_login_idx').on(table.lastLoginAt),
 ]);
 
 export const toolPricing = pgTable('tool_pricing', {
@@ -274,6 +374,33 @@ export const usersRelations = relations(users, ({ many }) => ({
   toolUsage: many(toolUsage),
   apiKeys: many(apiKeys),
   proofs: many(proofs),
+  // Auth relations
+  sessions: many(session),
+  accounts: many(account),
+  // Wallet relations
+  wallets: many(userWallets),
+}));
+
+export const userWalletsRelations = relations(userWallets, ({ one }) => ({
+  user: one(users, {
+    fields: [userWallets.userId],
+    references: [users.id],
+  }),
+}));
+
+// Auth table relations
+export const sessionRelations = relations(session, ({ one }) => ({
+  user: one(users, {
+    fields: [session.userId],
+    references: [users.id],
+  }),
+}));
+
+export const accountRelations = relations(account, ({ one }) => ({
+  user: one(users, {
+    fields: [account.userId],
+    references: [users.id],
+  }),
 }));
 
 export const toolPricingRelations = relations(toolPricing, ({ one }) => ({

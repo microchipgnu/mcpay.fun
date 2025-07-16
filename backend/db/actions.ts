@@ -1,4 +1,28 @@
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+/**
+ * Database Actions for MCPay.fun
+ * 
+ * This module contains all database operations, including:
+ * - User and wallet management (multi-blockchain support)
+ * - MCP server and tool operations
+ * - Payment and usage tracking  
+ * - Analytics and proof verification
+ * - CDP (Coinbase Developer Platform) managed wallet integration
+ * 
+ * ## CDP Auto-Creation:
+ * - `userHasCDPWallets()` - Check if user has CDP wallets
+ * - `autoCreateCDPWalletForUser()` - Auto-create CDP wallet with smart account
+ * - `createCDPManagedWallet()` - Store CDP wallet in database
+ * - `getCDPWalletsByUser()` - Get user's CDP wallets
+ * - `getCDPWalletByAccountId()` - Find CDP wallet by account ID
+ * - `updateCDPWalletMetadata()` - Update CDP wallet metadata
+ * 
+ * The auto-creation system ensures every user gets a managed wallet with:
+ * - Regular account for general transactions
+ * - Smart account with gas sponsorship on Base networks
+ * - Secure key management via CDP's TEE infrastructure
+ */
+
+import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import db from "./index.js";
 import {
     analytics,
@@ -11,8 +35,14 @@ import {
     toolPricing,
     toolUsage,
     users,
-    webhooks
+    userWallets,
+    webhooks,
+    session,
+    account,
+    verification
 } from "./schema.js";
+import { createCDPAccount } from '../lib/3rd-parties/cdp.js';
+import { getBlockchainArchitecture, type BlockchainArchitecture } from '../lib/crypto-accounts.js';
 
 // Define proper transaction type
 export type TransactionType = Parameters<Parameters<typeof db['transaction']>[0]>[0];
@@ -843,14 +873,34 @@ export const txOperations = {
     },
 
     createUser: (data: {
-        walletAddress: string;
+        walletAddress?: string;
+        name?: string;
         email?: string;
+        emailVerified?: boolean;
+        image?: string;
         displayName?: string;
         avatarUrl?: string;
+        // New wallet-specific options (for initial wallet)
+        walletType?: 'external' | 'managed' | 'custodial';
+        walletProvider?: string;
+        blockchain?: string; // 'ethereum', 'solana', 'near', etc.
+        architecture?: BlockchainArchitecture; // 'evm', 'solana', 'near', 'cosmos', 'bitcoin'
+        walletMetadata?: Record<string, unknown>; // Blockchain-specific data
+        externalWalletId?: string; // For managed services
+        externalUserId?: string; // User ID in external system
     }) => async (tx: TransactionType) => {
+        // Ensure user has at least one identifier (wallet or email)
+        if (!data.walletAddress && !data.email) {
+            throw new Error("User must have either a wallet address or email address");
+        }
+
+        // Create user first
         const result = await tx.insert(users).values({
-            walletAddress: data.walletAddress,
+            walletAddress: data.walletAddress, // Keep for legacy compatibility
+            name: data.name,
             email: data.email,
+            emailVerified: data.emailVerified,
+            image: data.image,
             displayName: data.displayName,
             avatarUrl: data.avatarUrl,
             createdAt: new Date(),
@@ -858,7 +908,29 @@ export const txOperations = {
         }).returning();
 
         if (!result[0]) throw new Error("Failed to create user");
-        return result[0];
+        
+        const user = result[0];
+
+        // If wallet address provided, add it to the new wallet system
+        if (data.walletAddress) {
+            // Determine architecture if not provided
+            const architecture = data.architecture || getBlockchainArchitecture(data.blockchain);
+            
+            await txOperations.addWalletToUser({
+                userId: user.id,
+                walletAddress: data.walletAddress,
+                walletType: data.walletType || 'external',
+                provider: data.walletProvider || 'unknown',
+                blockchain: data.blockchain,
+                architecture,
+                isPrimary: true, // First wallet is always primary
+                walletMetadata: data.walletMetadata,
+                externalWalletId: data.externalWalletId,
+                externalUserId: data.externalUserId
+            })(tx);
+        }
+
+        return user;
     },
 
     updateUserLastLogin: (id: string) => async (tx: TransactionType) => {
@@ -873,6 +945,680 @@ export const txOperations = {
             .returning();
 
         if (!result[0]) throw new Error(`User with ID ${id} not found`);
+        return result[0];
+    },
+
+    getUserByEmail: (email: string) => async (tx: TransactionType) => {
+        return await tx.query.users.findFirst({
+            where: eq(users.email, email)
+        });
+    },
+
+    getUserByEmailOrWallet: (identifier: string) => async (tx: TransactionType) => {
+        // Try to find user by email first, then by wallet address (including both legacy and new wallet tables)
+        const userByEmail = await tx.query.users.findFirst({
+            where: eq(users.email, identifier)
+        });
+        
+        if (userByEmail) return userByEmail;
+
+        // Check legacy wallet field
+        const userByLegacyWallet = await tx.query.users.findFirst({
+            where: eq(users.walletAddress, identifier)
+        });
+        
+        if (userByLegacyWallet) return userByLegacyWallet;
+
+        // Check new user_wallets table
+        const walletRecord = await tx.query.userWallets.findFirst({
+            where: eq(userWallets.walletAddress, identifier),
+            with: {
+                user: true
+            }
+        });
+        
+        return walletRecord?.user || null;
+    },
+
+    // Multi-Wallet Management Operations
+    addWalletToUser: (data: {
+        userId: string;
+        walletAddress: string;
+        walletType: 'external' | 'managed' | 'custodial';
+        provider?: string;
+        blockchain?: string; // 'ethereum', 'solana', 'near', 'polygon', 'base', etc.
+        architecture?: BlockchainArchitecture; // 'evm', 'solana', 'near', 'cosmos', 'bitcoin'
+        isPrimary?: boolean;
+        walletMetadata?: Record<string, unknown>; // Blockchain-specific data like chainId, ensName, etc.
+        externalWalletId?: string; // For managed services like Coinbase CDP, Privy
+        externalUserId?: string; // User ID in external system
+    }) => async (tx: TransactionType) => {
+        // Check if this exact combination already exists
+        const existingWallet = await tx.query.userWallets.findFirst({
+            where: and(
+                eq(userWallets.userId, data.userId),
+                eq(userWallets.walletAddress, data.walletAddress),
+                data.provider ? eq(userWallets.provider, data.provider) : isNull(userWallets.provider),
+                eq(userWallets.walletType, data.walletType)
+            )
+        });
+
+        if (existingWallet) {
+            // If wallet exists but is inactive, reactivate it
+            if (!existingWallet.isActive) {
+                const updatedWallet = await tx.update(userWallets)
+                    .set({
+                        isActive: true,
+                        isPrimary: data.isPrimary || existingWallet.isPrimary,
+                        blockchain: data.blockchain || existingWallet.blockchain,
+                        architecture: data.architecture || existingWallet.architecture,
+                        walletMetadata: data.walletMetadata || existingWallet.walletMetadata,
+                        externalWalletId: data.externalWalletId || existingWallet.externalWalletId,
+                        externalUserId: data.externalUserId || existingWallet.externalUserId,
+                        updatedAt: new Date(),
+                        lastUsedAt: new Date()
+                    })
+                    .where(eq(userWallets.id, existingWallet.id))
+                    .returning();
+                
+                return updatedWallet[0];
+            }
+            
+            // If wallet is active, update it with new data and return it
+            const updatedWallet = await tx.update(userWallets)
+                .set({
+                    isPrimary: data.isPrimary !== undefined ? data.isPrimary : existingWallet.isPrimary,
+                    blockchain: data.blockchain || existingWallet.blockchain,
+                    architecture: data.architecture || existingWallet.architecture,
+                    walletMetadata: data.walletMetadata || existingWallet.walletMetadata,
+                    externalWalletId: data.externalWalletId || existingWallet.externalWalletId,
+                    externalUserId: data.externalUserId || existingWallet.externalUserId,
+                    updatedAt: new Date(),
+                    lastUsedAt: new Date()
+                })
+                .where(eq(userWallets.id, existingWallet.id))
+                .returning();
+            
+            return updatedWallet[0];
+        }
+
+        // If this is set as primary, unset any existing primary wallet
+        if (data.isPrimary) {
+            await tx.update(userWallets)
+                .set({ isPrimary: false, updatedAt: new Date() })
+                .where(and(
+                    eq(userWallets.userId, data.userId),
+                    eq(userWallets.isPrimary, true)
+                ));
+        }
+
+        // Determine architecture if not provided
+        const architecture = data.architecture || getBlockchainArchitecture(data.blockchain);
+
+        // Create new wallet record
+        const result = await tx.insert(userWallets).values({
+            userId: data.userId,
+            walletAddress: data.walletAddress,
+            walletType: data.walletType,
+            provider: data.provider,
+            blockchain: data.blockchain,
+            architecture,
+            isPrimary: data.isPrimary || false,
+            walletMetadata: data.walletMetadata,
+            externalWalletId: data.externalWalletId,
+            externalUserId: data.externalUserId,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        }).returning();
+
+        if (!result[0]) throw new Error("Failed to add wallet to user");
+        return result[0];
+    },
+
+    getUserWallets: (userId: string, activeOnly = true) => async (tx: TransactionType) => {
+        const conditions = [eq(userWallets.userId, userId)];
+        if (activeOnly) {
+            conditions.push(eq(userWallets.isActive, true));
+        }
+
+        return await tx.query.userWallets.findMany({
+            where: and(...conditions),
+            orderBy: [desc(userWallets.isPrimary), desc(userWallets.createdAt)]
+        });
+    },
+
+    getUserPrimaryWallet: (userId: string) => async (tx: TransactionType) => {
+        return await tx.query.userWallets.findFirst({
+            where: and(
+                eq(userWallets.userId, userId),
+                eq(userWallets.isPrimary, true),
+                eq(userWallets.isActive, true)
+            )
+        });
+    },
+
+    getWalletByAddress: (walletAddress: string) => async (tx: TransactionType) => {
+        return await tx.query.userWallets.findFirst({
+            where: eq(userWallets.walletAddress, walletAddress),
+            with: {
+                user: {
+                    columns: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        displayName: true,
+                        avatarUrl: true,
+                        image: true
+                    }
+                }
+            }
+        });
+    },
+
+    setPrimaryWallet: (userId: string, walletId: string) => async (tx: TransactionType) => {
+        // First, verify the wallet belongs to the user
+        const wallet = await tx.query.userWallets.findFirst({
+            where: and(
+                eq(userWallets.id, walletId),
+                eq(userWallets.userId, userId),
+                eq(userWallets.isActive, true)
+            )
+        });
+
+        if (!wallet) {
+            throw new Error("Wallet not found or doesn't belong to user");
+        }
+
+        // Unset existing primary wallet
+        await tx.update(userWallets)
+            .set({ isPrimary: false, updatedAt: new Date() })
+            .where(and(
+                eq(userWallets.userId, userId),
+                eq(userWallets.isPrimary, true)
+            ));
+
+        // Set new primary wallet
+        const result = await tx.update(userWallets)
+            .set({ isPrimary: true, updatedAt: new Date() })
+            .where(eq(userWallets.id, walletId))
+            .returning();
+
+        return result[0];
+    },
+
+    removeWallet: (userId: string, walletId: string) => async (tx: TransactionType) => {
+        // Verify wallet belongs to user
+        const wallet = await tx.query.userWallets.findFirst({
+            where: and(
+                eq(userWallets.id, walletId),
+                eq(userWallets.userId, userId)
+            )
+        });
+
+        if (!wallet) {
+            throw new Error("Wallet not found or doesn't belong to user");
+        }
+
+        // Don't allow removing the last wallet
+        const userWalletCount = await tx.query.userWallets.findMany({
+            where: and(
+                eq(userWallets.userId, userId),
+                eq(userWallets.isActive, true)
+            )
+        });
+
+        if (userWalletCount.length <= 1) {
+            throw new Error("Cannot remove the last wallet from a user");
+        }
+
+        // Mark as inactive instead of deleting (for audit trail)
+        const result = await tx.update(userWallets)
+            .set({ 
+                isActive: false, 
+                isPrimary: false,
+                updatedAt: new Date() 
+            })
+            .where(eq(userWallets.id, walletId))
+            .returning();
+
+        // If this was the primary wallet, set another one as primary
+        if (wallet.isPrimary) {
+            const remainingWallets = await tx.query.userWallets.findMany({
+                where: and(
+                    eq(userWallets.userId, userId),
+                    eq(userWallets.isActive, true)
+                ),
+                orderBy: [desc(userWallets.createdAt)],
+                limit: 1
+            });
+
+            if (remainingWallets[0]) {
+                await tx.update(userWallets)
+                    .set({ isPrimary: true, updatedAt: new Date() })
+                    .where(eq(userWallets.id, remainingWallets[0].id));
+            }
+        }
+
+        return result[0];
+    },
+
+    updateWalletMetadata: (walletId: string, metadata: {
+        walletMetadata?: Record<string, unknown>; // All blockchain-specific data goes here
+        lastUsedAt?: Date;
+    }) => async (tx: TransactionType) => {
+        const result = await tx.update(userWallets)
+            .set({
+                ...metadata,
+                updatedAt: new Date()
+            })
+            .where(eq(userWallets.id, walletId))
+            .returning();
+
+        if (!result[0]) throw new Error(`Wallet with ID ${walletId} not found`);
+        return result[0];
+    },
+
+    // Create managed wallet for user (via external services like Coinbase CDP, Privy)
+    createManagedWallet: (userId: string, data: {
+        walletAddress: string;
+        provider: string; // 'coinbase-cdp', 'privy', 'magic', etc.
+        blockchain?: string; // 'ethereum', 'solana', 'near', etc.
+        architecture?: BlockchainArchitecture; // 'evm', 'solana', 'near', 'cosmos', 'bitcoin'
+        externalWalletId: string; // Reference ID from external service
+        externalUserId?: string; // User ID in external system
+        isPrimary?: boolean;
+        walletMetadata?: Record<string, unknown>;
+    }) => async (tx: TransactionType) => {
+        // Determine architecture if not provided
+        const architecture = data.architecture || getBlockchainArchitecture(data.blockchain);
+        
+        return await txOperations.addWalletToUser({
+            userId,
+            walletAddress: data.walletAddress,
+            walletType: 'managed',
+            provider: data.provider,
+            blockchain: data.blockchain,
+            architecture,
+            isPrimary: data.isPrimary,
+            externalWalletId: data.externalWalletId,
+            externalUserId: data.externalUserId,
+            walletMetadata: {
+                ...data.walletMetadata,
+                type: 'managed',
+                createdByService: true,
+                provider: data.provider
+            }
+        })(tx);
+    },
+
+    // CDP-specific operations
+    createCDPManagedWallet: (userId: string, data: {
+        walletAddress: string;
+        accountId: string; // CDP account ID/name
+        accountName: string;
+        network: string; // CDP network (base, base-sepolia, etc.)
+        isSmartAccount?: boolean;
+        ownerAccountId?: string; // For smart accounts
+        isPrimary?: boolean;
+    }) => async (tx: TransactionType) => {
+        // Determine blockchain and architecture for CDP wallets
+        const blockchain = data.network.includes('base') ? 'base' : 'ethereum';
+        const architecture = getBlockchainArchitecture(blockchain);
+        
+        return await txOperations.addWalletToUser({
+            userId,
+            walletAddress: data.walletAddress,
+            walletType: 'managed',
+            provider: 'coinbase-cdp',
+            blockchain,
+            architecture,
+            isPrimary: data.isPrimary,
+            externalWalletId: data.accountId,
+            externalUserId: userId,
+            walletMetadata: {
+                cdpAccountId: data.accountId,
+                cdpAccountName: data.accountName,
+                cdpNetwork: data.network,
+                isSmartAccount: data.isSmartAccount || false,
+                ownerAccountId: data.ownerAccountId,
+                provider: 'coinbase-cdp',
+                type: 'managed',
+                createdByService: true,
+                managedBy: 'coinbase-cdp',
+                gasSponsored: data.isSmartAccount && (data.network === 'base' || data.network === 'base-sepolia'),
+            }
+        })(tx);
+    },
+
+    getCDPWalletsByUser: (userId: string) => async (tx: TransactionType) => {
+        return await tx.query.userWallets.findMany({
+            where: and(
+                eq(userWallets.userId, userId),
+                eq(userWallets.provider, 'coinbase-cdp'),
+                eq(userWallets.isActive, true)
+            ),
+            orderBy: [desc(userWallets.isPrimary), desc(userWallets.createdAt)]
+        });
+    },
+
+    getCDPWalletByAccountId: (accountId: string) => async (tx: TransactionType) => {
+        return await tx.query.userWallets.findFirst({
+            where: and(
+                eq(userWallets.externalWalletId, accountId),
+                eq(userWallets.provider, 'coinbase-cdp'),
+                eq(userWallets.isActive, true)
+            ),
+            with: {
+                user: {
+                    columns: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        displayName: true,
+                        avatarUrl: true,
+                        image: true
+                    }
+                }
+            }
+        });
+    },
+
+    updateCDPWalletMetadata: (walletId: string, metadata: {
+        cdpAccountName?: string;
+        cdpNetwork?: string;
+        lastUsedAt?: Date;
+        balanceCache?: Record<string, unknown>;
+        transactionHistory?: Record<string, unknown>[];
+    }) => async (tx: TransactionType) => {
+        const wallet = await tx.query.userWallets.findFirst({
+            where: eq(userWallets.id, walletId)
+        });
+
+        if (!wallet || wallet.provider !== 'coinbase-cdp') {
+            throw new Error('CDP wallet not found');
+        }
+
+        const updatedMetadata = {
+            ...wallet.walletMetadata as Record<string, unknown>,
+            ...metadata,
+            lastUpdated: new Date().toISOString()
+        };
+
+        return await tx.update(userWallets)
+            .set({
+                walletMetadata: updatedMetadata,
+                updatedAt: new Date(),
+                ...(metadata.lastUsedAt && { lastUsedAt: metadata.lastUsedAt })
+            })
+            .where(eq(userWallets.id, walletId))
+            .returning();
+    },
+
+    // Helper to check if user has any CDP wallets
+    userHasCDPWallets: (userId: string) => async (tx: TransactionType) => {
+        const cdpWallets = await tx.query.userWallets.findMany({
+            where: and(
+                eq(userWallets.userId, userId),
+                eq(userWallets.provider, 'coinbase-cdp'),
+                eq(userWallets.isActive, true)
+            ),
+            limit: 1 // Just need to know if any exist
+        });
+
+        return cdpWallets.length > 0;
+    },
+
+    // Auto-create CDP wallet for new users
+    autoCreateCDPWalletForUser: (userId: string, userInfo: {
+        email?: string;
+        name?: string;
+        displayName?: string;
+    }) => async (tx: TransactionType) => {
+        console.log(`[DEBUG] Starting CDP wallet auto-creation for user ${userId}`);
+        
+        try {
+            // Check if user already has CDP wallets
+            console.log(`[DEBUG] Checking if user ${userId} already has CDP wallets`);
+            const hasCDPWallets = await txOperations.userHasCDPWallets(userId)(tx);
+            console.log(`[DEBUG] User ${userId} has CDP wallets:`, hasCDPWallets);
+            
+            if (hasCDPWallets) {
+                console.log(`User ${userId} already has CDP wallets, skipping auto-creation`);
+                return null;
+            }
+
+            // Generate account name based on user info
+            const accountName = userInfo.displayName 
+                ? `mcpay-${userInfo.displayName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`
+                : `mcpay-user-${userId.slice(0, 8)}-${Date.now()}`;
+
+            console.log(`[DEBUG] Auto-creating CDP wallet for user ${userId} with account name: ${accountName}`);
+
+            // Create CDP account with smart account for better UX
+            console.log(`[DEBUG] Calling createCDPAccount...`);
+            const cdpResult = await createCDPAccount({
+                accountName,
+                network: 'base-sepolia', // Start with testnet
+                createSmartAccount: true, // Enable gas sponsorship
+            });
+            console.log(`[DEBUG] CDP account creation result:`, cdpResult);
+
+            const wallets = [];
+
+            // Store main account
+            console.log(`[DEBUG] Storing main account in database...`);
+            const mainWallet = await txOperations.createCDPManagedWallet(userId, {
+                walletAddress: cdpResult.account.walletAddress,
+                accountId: cdpResult.account.accountId,
+                accountName: cdpResult.account.accountName || cdpResult.account.accountId,
+                network: cdpResult.account.network,
+                isSmartAccount: false,
+                isPrimary: true, // Make the first CDP wallet primary
+            })(tx);
+            
+            if (mainWallet) {
+                wallets.push(mainWallet);
+                console.log(`[DEBUG] Main wallet stored:`, mainWallet.walletAddress);
+            }
+
+            // Store smart account if created
+            if (cdpResult.smartAccount) {
+                console.log(`[DEBUG] Storing smart account in database...`);
+                const smartWallet = await txOperations.createCDPManagedWallet(userId, {
+                    walletAddress: cdpResult.smartAccount.walletAddress,
+                    accountId: cdpResult.smartAccount.accountId,
+                    accountName: cdpResult.smartAccount.accountName || cdpResult.smartAccount.accountId,
+                    network: cdpResult.smartAccount.network,
+                    isSmartAccount: true,
+                    ownerAccountId: cdpResult.account.accountId,
+                    isPrimary: false, // Smart accounts are not primary by default
+                })(tx);
+                if (smartWallet) {
+                    wallets.push(smartWallet);
+                    console.log(`[DEBUG] Smart wallet stored:`, smartWallet.walletAddress);
+                }
+            }
+
+            console.log(`[DEBUG] Successfully created ${wallets.length} CDP wallets for user ${userId}`);
+            
+            return {
+                cdpResult,
+                wallets,
+                accountName
+            };
+        } catch (error) {
+            console.error(`[ERROR] Failed to auto-create CDP wallet for user ${userId}:`, error);
+            console.error(`[ERROR] Error details:`, {
+                name: error instanceof Error ? error.name : 'Unknown',
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined
+            });
+            // Don't throw error - this is a best-effort auto-creation
+            // The user can always create wallets manually later
+            return null;
+        }
+    },
+
+    // Legacy compatibility - migrate legacy wallet to new system
+    migrateLegacyWallet: (userId: string) => async (tx: TransactionType) => {
+        const user = await tx.query.users.findFirst({
+            where: eq(users.id, userId)
+        });
+
+        if (!user?.walletAddress) {
+            return null; // No legacy wallet to migrate
+        }
+
+        // Check if wallet already exists in new system
+        const existingWallet = await tx.query.userWallets.findFirst({
+            where: and(
+                eq(userWallets.userId, userId),
+                eq(userWallets.walletAddress, user.walletAddress)
+            )
+        });
+
+        if (existingWallet) {
+            return existingWallet; // Already migrated
+        }
+
+        // Migrate legacy wallet - assume EVM architecture as default for legacy wallets
+        const migratedWallet = await txOperations.addWalletToUser({
+            userId,
+            walletAddress: user.walletAddress,
+            walletType: 'external',
+            provider: 'legacy',
+            blockchain: 'ethereum', // Default to ethereum for legacy wallets
+            architecture: 'evm', // Default to EVM for legacy wallets
+            isPrimary: true,
+            walletMetadata: {
+                migratedFromLegacy: true,
+                migratedAt: new Date().toISOString()
+            }
+        })(tx);
+
+        return migratedWallet;
+    },
+
+    // Session operations
+    createSession: (data: {
+        id: string;
+        userId: string;
+        expiresAt: Date;
+        token: string;
+        ipAddress?: string;
+        userAgent?: string;
+    }) => async (tx: TransactionType) => {
+        const result = await tx.insert(session).values({
+            id: data.id,
+            userId: data.userId,
+            expiresAt: data.expiresAt,
+            token: data.token,
+            ipAddress: data.ipAddress,
+            userAgent: data.userAgent,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        }).returning();
+
+        if (!result[0]) throw new Error("Failed to create session");
+        return result[0];
+    },
+
+    getSessionByToken: (token: string) => async (tx: TransactionType) => {
+        return await tx.query.session.findFirst({
+            where: eq(session.token, token),
+            with: {
+                user: true
+            }
+        });
+    },
+
+    deleteSession: (id: string) => async (tx: TransactionType) => {
+        const result = await tx.delete(session)
+            .where(eq(session.id, id))
+            .returning();
+
+        if (!result[0]) throw new Error(`Session with ID ${id} not found`);
+        return result[0];
+    },
+
+    // Account operations (for OAuth providers)
+    createAccount: (data: {
+        id: string;
+        accountId: string;
+        providerId: string;
+        userId: string;
+        accessToken?: string;
+        refreshToken?: string;
+        idToken?: string;
+        accessTokenExpiresAt?: Date;
+        refreshTokenExpiresAt?: Date;
+        scope?: string;
+        password?: string;
+    }) => async (tx: TransactionType) => {
+        const result = await tx.insert(account).values({
+            id: data.id,
+            accountId: data.accountId,
+            providerId: data.providerId,
+            userId: data.userId,
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken,
+            idToken: data.idToken,
+            accessTokenExpiresAt: data.accessTokenExpiresAt,
+            refreshTokenExpiresAt: data.refreshTokenExpiresAt,
+            scope: data.scope,
+            password: data.password,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        }).returning();
+
+        if (!result[0]) throw new Error("Failed to create account");
+        return result[0];
+    },
+
+    getAccountByProvider: (userId: string, providerId: string) => async (tx: TransactionType) => {
+        return await tx.query.account.findFirst({
+            where: and(
+                eq(account.userId, userId),
+                eq(account.providerId, providerId)
+            )
+        });
+    },
+
+    // Verification operations
+    createVerification: (data: {
+        id: string;
+        identifier: string;
+        value: string;
+        expiresAt: Date;
+    }) => async (tx: TransactionType) => {
+        const result = await tx.insert(verification).values({
+            id: data.id,
+            identifier: data.identifier,
+            value: data.value,
+            expiresAt: data.expiresAt,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        }).returning();
+
+        if (!result[0]) throw new Error("Failed to create verification");
+        return result[0];
+    },
+
+    getVerification: (identifier: string, value: string) => async (tx: TransactionType) => {
+        return await tx.query.verification.findFirst({
+            where: and(
+                eq(verification.identifier, identifier),
+                eq(verification.value, value)
+            )
+        });
+    },
+
+    deleteVerification: (id: string) => async (tx: TransactionType) => {
+        const result = await tx.delete(verification)
+            .where(eq(verification.id, id))
+            .returning();
+
+        if (!result[0]) throw new Error(`Verification with ID ${id} not found`);
         return result[0];
     },
 
@@ -975,6 +1721,103 @@ export const txOperations = {
         return await tx.query.payments.findFirst({
             where: eq(payments.transactionHash, transactionHash)
         });
+    },
+
+    // API Keys
+    validateApiKey: (keyHash: string) => async (tx: TransactionType) => {
+        const apiKey = await tx.query.apiKeys.findFirst({
+            where: and(
+                eq(apiKeys.keyHash, keyHash),
+                eq(apiKeys.active, true)
+            ),
+            with: {
+                user: {
+                    columns: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        displayName: true,
+                        avatarUrl: true,
+                        image: true
+                    }
+                }
+            }
+        });
+
+        if (!apiKey) {
+            return null;
+        }
+
+        // Check if key is expired
+        if (apiKey.expiresAt && new Date() > apiKey.expiresAt) {
+            return null;
+        }
+
+        // Update last used timestamp
+        await tx.update(apiKeys)
+            .set({ lastUsedAt: new Date() })
+            .where(eq(apiKeys.id, apiKey.id));
+
+        return {
+            apiKey,
+            user: apiKey.user
+        };
+    },
+
+    createApiKey: (data: {
+        userId: string;
+        keyHash: string;
+        name: string;
+        permissions: string[];
+        expiresAt?: Date;
+    }) => async (tx: TransactionType) => {
+        const result = await tx.insert(apiKeys).values({
+            userId: data.userId,
+            keyHash: data.keyHash,
+            name: data.name,
+            permissions: data.permissions,
+            expiresAt: data.expiresAt,
+            active: true,
+            createdAt: new Date()
+        }).returning();
+
+        if (!result[0]) throw new Error("Failed to create API key");
+        return result[0];
+    },
+
+    getUserApiKeys: (userId: string) => async (tx: TransactionType) => {
+        return await tx.query.apiKeys.findMany({
+            where: and(
+                eq(apiKeys.userId, userId),
+                eq(apiKeys.active, true)
+            ),
+            columns: {
+                id: true,
+                name: true,
+                permissions: true,
+                createdAt: true,
+                expiresAt: true,
+                lastUsedAt: true,
+                // Exclude keyHash for security
+            },
+            orderBy: [desc(apiKeys.createdAt)]
+        });
+    },
+
+    revokeApiKey: (keyId: string, userId: string) => async (tx: TransactionType) => {
+        const result = await tx.update(apiKeys)
+            .set({ 
+                active: false,
+                lastUsedAt: new Date()
+            })
+            .where(and(
+                eq(apiKeys.id, keyId),
+                eq(apiKeys.userId, userId)
+            ))
+            .returning();
+
+        if (!result[0]) throw new Error(`API key with ID ${keyId} not found or doesn't belong to user`);
+        return result[0];
     },
 
     // Tool Usage
@@ -1215,28 +2058,6 @@ export const txOperations = {
                 eq(serverOwnership.active, true)
             )
         });
-    },
-
-    // API Keys
-    createApiKey: (data: {
-        userId: string;
-        keyHash: string;
-        name: string;
-        permissions: string[];
-        expiresAt?: Date;
-    }) => async (tx: TransactionType) => {
-        const result = await tx.insert(apiKeys).values({
-            userId: data.userId,
-            keyHash: data.keyHash,
-            name: data.name,
-            permissions: data.permissions,
-            expiresAt: data.expiresAt,
-            active: true,
-            createdAt: new Date()
-        }).returning();
-
-        if (!result[0]) throw new Error("Failed to create API key");
-        return result[0];
     },
 
     getApiKeyByHash: (keyHash: string) => async (tx: TransactionType) => {

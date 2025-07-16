@@ -15,6 +15,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get company facts by ticker
   server.tool(
     "getCompanyFacts",
+    "Get company facts for a given ticker",
     { ticker: z.string().describe("The ticker symbol of the company") },
     async ({ ticker }) => {
       try {
@@ -35,6 +36,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get historical stock prices
   server.tool(
     "getStockPrices",
+    "Get historical stock prices for a given ticker",
     {
       ticker: z.string().describe("The ticker symbol of the company"),
       interval: z.enum(["second", "minute", "day", "week", "month", "year"]).describe("The time interval for price data"),
@@ -68,6 +70,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get real-time stock price snapshot
   server.tool(
     "getStockSnapshot",
+    "Get real-time stock price snapshot for a given ticker",
     { ticker: z.string().describe("The ticker symbol of the company") },
     async ({ ticker }, { authInfo }) => {
       console.log(authInfo);
@@ -88,6 +91,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get financial statements
   server.tool(
     "getFinancialStatements",
+    "Get financial statements for a given ticker",
     {
       ticker: z.string().describe("The ticker symbol of the company"),
       period: z.enum(["annual", "quarterly", "ttm"]).describe("The time period for the financial data"),
@@ -111,6 +115,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get insider trades
   server.tool(
     "getInsiderTrades",
+    "Get insider trades for a given ticker",
     {
       ticker: z.string().describe("The ticker symbol of the company"),
       limit: z.number().int().min(1).optional().describe("Maximum number of trades to return"),
@@ -133,6 +138,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get company news
   server.tool(
     "getCompanyNews",
+    "Get company news for a given ticker",
     {
       ticker: z.string().describe("The ticker symbol of the company"),
       startDate: z.string().optional().describe("The start date in YYYY-MM-DD format"),
@@ -162,6 +168,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Search financial data by filters
   server.tool(
     "searchFinancialData",
+    "Search financial data by filters",
     {
       period: z.enum(["annual", "quarterly", "ttm"]).optional().describe("The time period for the financial data"),
       limit: z.number().int().min(1).max(100).optional().describe("Maximum number of results to return (max: 100)"),
@@ -195,6 +202,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get crypto prices
   server.tool(
     "getCryptoPrices",
+    "Get crypto prices for a given ticker",
     {
       ticker: z.string().describe("The cryptocurrency ticker (e.g., BTC-USD)"),
       interval: z.enum(["minute", "day", "week", "month", "year"]).describe("The time interval for price data"),
@@ -229,6 +237,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get crypto price snapshot
   server.tool(
     "getCryptoSnapshot",
+    "Get crypto price snapshot for a given ticker",
     { ticker: z.string().describe("The cryptocurrency ticker (e.g., BTC-USD)") },
     async ({ ticker }) => {
       try {
@@ -248,6 +257,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get institutional ownership by ticker
   server.tool(
     "getInstitutionalOwnership",
+    "Get institutional ownership for a given ticker",
     {
       ticker: z.string().describe("The ticker symbol of the company"),
       limit: z.number().int().min(1).optional().describe("Maximum number of institutions to return"),
@@ -275,6 +285,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get institutional ownership by investor
   server.tool(
     "getInvestorHoldings",
+    "Get investor holdings for a given investor",
     {
       investor: z.string().describe("The name of the investment manager/institution"),
       limit: z.number().int().min(1).optional().describe("Maximum number of holdings to return"),
@@ -302,6 +313,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get SEC filings
   server.tool(
     "getSecFilings",
+    "Get SEC filings for a given ticker",
     {
       ticker: z.string().describe("The ticker symbol of the company"),
       filingType: z.enum(["10-K", "10-Q", "8-K", "4", "144"]).optional().describe("The type of filing to filter by"),
@@ -327,6 +339,7 @@ const handler = createMcpHandler((server) => {
   // Tool: Get specific items from SEC filings
   server.tool(
     "getSecFilingItems",
+    "Get specific items from SEC filings for a given ticker",
     {
       ticker: z.string().describe("The ticker symbol of the company"),
       filingType: z.enum(["10-K", "10-Q"]).describe("The type of filing"),

@@ -107,6 +107,12 @@ export function ToolExecutionModal({ isOpen, onClose, tool, serverId }: ToolExec
     return chainId ? getNetworkByChainId(chainId) : null
   }
 
+  const getCurrentBlockchain = () => {
+    const network = getCurrentNetwork()
+    if (!network) return 'ethereum'
+    return network.startsWith('sei') ? 'sei' : 'ethereum'
+  }
+
   const isOnCorrectNetwork = () => {
     const requiredNetwork = getRequiredNetwork()
     const currentNetwork = getCurrentNetwork()
@@ -321,6 +327,9 @@ export function ToolExecutionModal({ isOpen, onClose, tool, serverId }: ToolExec
 
         const transport = createPaymentTransport(new URL(mcpUrl), account, {
           maxPaymentValue: BigInt(0.1 * 10 ** 6), // 0.1 USDC max
+          requestInit: {
+            credentials: "include",
+          }
         });
 
         // Create MCP client

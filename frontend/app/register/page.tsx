@@ -20,6 +20,8 @@ import { openBlockscout } from "@/lib/blockscout"
 import { useRouter } from "next/navigation"
 import { type Network, getTokensByNetwork, getStablecoins, NETWORKS, type NetworkInfo } from "@/lib/tokens"
 import { switchToNetwork, getConnectionStatus } from "@/lib/wallet-utils"
+import { useChainId } from "wagmi"
+import { getNetworkByChainId } from "@/lib/tokens"
 
 interface MCPTool {
   name: string
@@ -85,6 +87,11 @@ export default function RegisterPage() {
   const { address: walletAddress, isConnected: isWalletConnected } = useAccount()
   const { error: connectError } = useConnect()
   const { disconnect, isPending: isDisconnectingWallet } = useDisconnect()
+  const chainId = useChainId()
+
+  // Get current network and blockchain info
+  const currentNetwork = chainId ? getNetworkByChainId(chainId) : null
+  const currentBlockchain = currentNetwork ? (currentNetwork.startsWith('sei') ? 'sei' : 'ethereum') : 'ethereum'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -119,7 +126,7 @@ export default function RegisterPage() {
       const defaultPaymentTokens: Record<Network, string> = {
         'base-sepolia': '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // USDC on Base Sepolia
         // 'base': '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC on Base
-        'sei-testnet': '0xeAcd10aaA6f362a94823df6BBC3C536841870772', // USDC on Sei Testnet
+        'sei-testnet': '0x4fCF1784B31630811181f670Aea7A7bEF803eaED', // USDC on Sei Testnet
         // 'ethereum': '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC on Ethereum
         // 'arbitrum': '0xaf88d065e77c8cc2239327c5edb3a432268e5831', // USDC on Arbitrum
         // 'optimism': '0x0b2c639c533813f4aa9d7837caf62653d097ff85', // USDC on Optimism
@@ -162,7 +169,7 @@ export default function RegisterPage() {
         })
       }))
 
-      // Prepare API request payload
+      // Prepare API request payload with enhanced wallet information
       const payload = {
         mcpOrigin: formData.url,
         receiverAddress: walletAddress,
@@ -171,11 +178,20 @@ export default function RegisterPage() {
         requireAuth: showAuthHeaders && authHeaders && Object.keys(authHeaders).length > 0,
         ...(authHeaders && Object.keys(authHeaders).length > 0 && { authHeaders }),
         ...(toolsWithPayment.length > 0 && { tools: toolsWithPayment }),
+        // Enhanced wallet information for multi-wallet support
+        walletInfo: {
+          blockchain: currentBlockchain,
+          network: currentNetwork || selectedNetwork,
+          walletType: 'external' as const,
+          primaryWallet: true,
+        },
         metadata: {
           registeredFromUI: true,
           timestamp: new Date().toISOString(),
           toolsCount: tools.length,
-          monetizedToolsCount: toolsWithPayment.length
+          monetizedToolsCount: toolsWithPayment.length,
+          registrationNetwork: currentNetwork || selectedNetwork,
+          registrationBlockchain: currentBlockchain,
         }
       }
 

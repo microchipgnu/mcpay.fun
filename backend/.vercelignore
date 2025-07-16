@@ -1,0 +1,34 @@
+# Development files
+*.log
+*.env.local
+.env.development
+
+# Database files
+*.sqlite
+*.sqlite3
+
+# TypeScript source maps
+*.map
+
+# Test files
+**/*.test.*
+**/*.spec.*
+**/__tests__/**
+
+# Documentation
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+
+# Dependencies that aren't needed at runtime
+drizzle/
+docs/
+examples/
+scripts/
+
+# OS files
+.DS_Store
+Thumbs.db 

@@ -8,6 +8,7 @@ This document describes the environment variables available for configuring API 
 
 - `NEXT_PUBLIC_API_URL` - Main API base URL (default: `https://api.mcpay.fun/api`)
 - `NEXT_PUBLIC_MCP_BASE_URL` - MCP server base URL (default: `https://api.mcpay.fun/mcp`)
+- `NEXT_PUBLIC_BACKEND_URL` - Backend server URL for authentication proxy (default: `http://localhost:3000`)
 
 ### Environment-Specific URLs (Optional)
 
@@ -22,18 +23,21 @@ This document describes the environment variables available for configuring API 
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:3001/api
 NEXT_PUBLIC_MCP_BASE_URL=http://localhost:3001/mcp
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 ```
 
 ### Staging Environment
 ```bash
 NEXT_PUBLIC_API_URL=https://staging-api.mcpay.fun/api
 NEXT_PUBLIC_MCP_BASE_URL=https://staging-api.mcpay.fun/mcp
+NEXT_PUBLIC_BACKEND_URL=https://staging-api.mcpay.fun
 ```
 
 ### Production Environment
 ```bash
 NEXT_PUBLIC_API_URL=https://api.mcpay.fun/api
 NEXT_PUBLIC_MCP_BASE_URL=https://api.mcpay.fun/mcp
+NEXT_PUBLIC_BACKEND_URL=https://api.mcpay.fun
 ```
 
 ## How It Works

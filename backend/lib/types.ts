@@ -1,6 +1,6 @@
 import type { PaymentRequirements as BasePaymentRequirements, FacilitatorConfig } from "x402/types";
 import { z } from "zod";
-import { Account, Address, Chain, Client, getAddress, Hex, LocalAccount, PublicActions, RpcSchema, toHex, Transport, WalletActions } from "viem";
+import { type Account, type Address, type Chain, type Client, getAddress, type Hex, type LocalAccount, type PublicActions, type RpcSchema, toHex, type Transport, type WalletActions } from "viem";
 import { ErrorReasons, x402Versions, type Network } from "x402/types";
 
 export const DEFAULT_FACILITATOR_URL = "https://x402.org/facilitator";
@@ -373,7 +373,7 @@ export const config: Record<string, ChainConfig> = {
         usdcName: "Bridged USDC",
     },
     "1328": {
-        usdcAddress: "0xeAcd10aaA6f362a94823df6BBC3C536841870772",
+        usdcAddress: "0x4fCF1784B31630811181f670Aea7A7bEF803eaED",
         usdcName: "USDC",
     },
 };
@@ -390,7 +390,7 @@ export const SupportedNetworkSchema = z.enum([
     "avalanche-fuji",
     "avalanche",
     "iotex",
-    "sei-testnet"
+    "sei-testnet",
 ]);
 
 export type SupportedNetwork = z.infer<typeof SupportedNetworkSchema>;

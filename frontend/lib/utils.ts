@@ -159,6 +159,7 @@ export async function apiCall<T = any>(
   const config: RequestInit = {
     ...options,
     headers: defaultHeaders,
+    credentials: 'include'
   }
 
   // Add timeout
@@ -285,4 +286,54 @@ export const api = {
 
     return await response.json()
   },
+
+  // Wallet management (future functionality)
+  getUserWallets: async (userId: string) => {
+    return apiCall(`/users/${userId}/wallets`)
+  },
+
+  addWalletToUser: async (userId: string, walletData: {
+    walletAddress: string;
+    blockchain: string;
+    walletType: 'external' | 'managed' | 'custodial';
+    provider?: string;
+    isPrimary?: boolean;
+    walletMetadata?: Record<string, unknown>;
+  }) => {
+    return apiCall(`/users/${userId}/wallets`, {
+      method: 'POST',
+      body: JSON.stringify(walletData),
+    })
+  },
+
+  setWalletAsPrimary: async (userId: string, walletId: string) => {
+    return apiCall(`/users/${userId}/wallets/${walletId}/primary`, {
+      method: 'PUT',
+    })
+  },
+
+  removeWallet: async (userId: string, walletId: string) => {
+    return apiCall(`/users/${userId}/wallets/${walletId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // Coinbase Onramp integration
+  createOnrampUrl: async (userId: string, options: {
+    walletAddress?: string;
+    network?: string;
+    asset?: string;
+    amount?: number;
+    currency?: string;
+    redirectUrl?: string;
+  } = {}) => {
+    return apiCall(`/users/${userId}/onramp/buy-url`, {
+      method: 'POST',
+      body: JSON.stringify(options),
+    })
+  },
+
+  getOnrampConfig: async () => {
+    return apiCall('/onramp/config')
+  }
 }

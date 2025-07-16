@@ -15,6 +15,34 @@
       "when": 1748736825311,
       "tag": "0001_lowly_charles_xavier",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1752447371671,
+      "tag": "0002_nostalgic_krista_starr",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1752449567804,
+      "tag": "0003_mysterious_vin_gonzales",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1752597694279,
+      "tag": "0004_certain_patch",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1752607894470,
+      "tag": "0005_elite_ken_ellis",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import { Sandbox } from "@vercel/sandbox";
 import { Ajv } from "ajv";
 import { z } from "zod";
 import { openmcpSchema } from "../lib/openmcp-schema.js";
-import { Context, Hono } from "hono";
+import { type Context, Hono } from "hono";
 import dotenv from "dotenv";
 dotenv.config();
 
