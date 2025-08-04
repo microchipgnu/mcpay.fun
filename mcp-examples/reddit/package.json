@@ -1,0 +1,31 @@
+{
+  "name": "reddit",
+  "version": "1.0.0",
+  "description": "MCP server providing access to Reddit's comprehensive API endpoints for reading posts, comments, subreddits, and user data",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mcp",
+    "reddit",
+    "api",
+    "social-media",
+    "data",
+    "posts",
+    "comments",
+    "subreddits"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.3",
+    "@vercel/mcp-adapter": "^0.11.1",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.3"
+  }
+}

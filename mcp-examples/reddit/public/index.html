@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit MCP Server</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .feature {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .tool-category {
+            background: white;
+            border: 1px solid #e1e5e9;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .tool-category h3 {
+            margin-top: 0;
+            color: #1a73e8;
+        }
+        .tool-list {
+            list-style: none;
+            padding: 0;
+        }
+        .tool-list li {
+            padding: 5px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .tool-list li:last-child {
+            border-bottom: none;
+        }
+        code {
+            background: #f1f3f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Reddit MCP Server</h1>
+        <p>A Model Context Protocol server providing comprehensive access to Reddit's API</p>
+    </div>
+
+    <div class="feature">
+        <h2>🚀 Features</h2>
+        <p>This MCP server provides <strong>16 powerful tools</strong> for accessing Reddit data including posts, comments, subreddits, user profiles, and comprehensive search capabilities.</p>
+    </div>
+
+    <div class="tools-grid">
+        <div class="tool-category">
+            <h3>📋 Subreddit Tools</h3>
+            <ul class="tool-list">
+                <li><code>getSubredditInfo</code></li>
+                <li><code>getSubredditPosts</code></li>
+                <li><code>getSubredditRules</code></li>
+                <li><code>getSubredditModerators</code></li>
+                <li><code>getPopularSubreddits</code></li>
+                <li><code>getNewSubreddits</code></li>
+            </ul>
+        </div>
+
+        <div class="tool-category">
+            <h3>💬 Post & Comment Tools</h3>
+            <ul class="tool-list">
+                <li><code>getPostDetails</code></li>
+                <li><code>getPostComments</code></li>
+                <li><code>getPostsByIds</code></li>
+                <li><code>getAllPosts</code></li>
+                <li><code>getRandomPost</code></li>
+            </ul>
+        </div>
+
+        <div class="tool-category">
+            <h3>👤 User Tools</h3>
+            <ul class="tool-list">
+                <li><code>getUserProfile</code></li>
+                <li><code>getUserPosts</code></li>
+                <li><code>getUserComments</code></li>
+                <li><code>getUserTrophies</code></li>
+            </ul>
+        </div>
+
+        <div class="tool-category">
+            <h3>🔍 Search Tools</h3>
+            <ul class="tool-list">
+                <li><code>searchReddit</code></li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="feature">
+        <h2>📚 Documentation</h2>
+        <p>For detailed setup instructions, usage examples, and API documentation, please visit the <a href="https://github.com/your-org/mcp-examples/tree/main/reddit" target="_blank">GitHub repository</a>.</p>
+    </div>
+
+    <div class="feature">
+        <h2>🔧 Setup</h2>
+        <p>To use this MCP server, you'll need:</p>
+        <ol>
+            <li>Reddit API credentials (Client ID and Secret)</li>
+            <li>Environment variables configured</li>
+            <li>MCP client that supports this server</li>
+        </ol>
+    </div>
+
+    <div class="feature">
+        <h2>⚡ Quick Start</h2>
+        <p>Example usage:</p>
+        <pre><code>{
+  "tool": "getSubredditPosts",
+  "parameters": {
+    "subreddit": "programming",
+    "sort": "hot",
+    "limit": 10
+  }
+}</code></pre>
+    </div>
+</body>
+</html>
